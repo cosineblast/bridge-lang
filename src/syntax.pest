@@ -1,0 +1,123 @@
+
+// overall structure
+
+module_file = { SOI ~ module ~ EOI }
+
+module = { top_level_declaration* }
+
+top_level_declaration = _{
+    function_declaration
+}
+
+// function declaration syntax
+
+function_declaration = {
+    function_specifier ~ function_name ~ parameters ~ return_type? ~ function_body
+}
+
+function_specifier = _{ "effect" ~ "fn" }
+
+function_name = { identifier }
+
+parameters = { "(" ~ ")" | "(" ~ parameter ~ ("," ~ parameter)* ~ ","? ~ ")" }
+
+parameter = { parameter_identifier ~ ":" ~ type }
+
+parameter_identifier = { identifier }
+
+return_type = { ("->"? ~ type)? }
+
+function_body = { block }
+
+// blocks & statements
+
+block = { "{" ~ non_final_statement* ~ final_statement? ~ "}" }
+
+non_final_statement = _{ (semicolon_statement ~ ";") | block_statement }
+
+final_statement = _{ (semicolon_statement | block_statement) ~ ";"? }
+
+semicolon_statement = _{ let_statement | expression_statement }
+
+expression_statement = { expression }
+
+let_statement = { "let" ~ identifier ~ type_specifier? ~ "=" ~ expression }
+
+type_specifier = { ":" ~ type }
+
+block_statement = { if_expression | block | while_expression }
+
+// expressions
+
+expression = _{ operator_expression | core_expression }
+
+if_expression = { "if" ~ "(" ~ expression ~ ")" ~ then_branch ~ ("else" ~ else_branch)? }
+then_branch   = { block }
+else_branch   = { block }
+
+while_expression = { "while" ~ "(" ~ expression ~ ")" ~ while_body }
+while_body       = { block }
+
+core_expression = _{
+    if_expression
+  | literal
+  | while_expression
+  | function_call
+  | block
+  | identifier
+  | paren_expression
+}
+
+function_call = { function_name_expression ~ ("(" ~ ")" | "(" ~ function_call_arguments ~ ")") }
+
+function_name_expression = { identifier | "(" ~ expression ~ ")" }
+
+function_call_arguments = { expression ~ ("," ~ expression)* ~ ","? }
+
+paren_expression = _{ "(" ~ expression ~ ")" }
+
+// operators (:crying emoji:)
+
+operator_expression = _{ general_operator_expression | cast_operator_expression }
+
+general_operator_expression = { operator_atom ~ (binary_operator ~ operator_atom)+ }
+
+binary_operator = { "+" | "-" | "or" | "/" | "*" | "and" }
+
+cast_operator_expression = { operator_atom ~ "as" ~ type }
+
+operator_atom = _{ core_expression }
+
+// literals
+
+literal =  { integer_literal | string_literal }
+
+string_literal = @{ simple_literal }
+
+simple_literal = _{ quote ~ literal_character* ~ quote }
+
+quote = { "\"" }
+backslash = { "\\" }
+
+literal_character = {
+	( !(quote | backslash) ~ ANY )
+    | backslash ~ (quote | backslash | "/" | "b" | "f" | "n" | "r" | "t")
+    | backslash ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+
+
+
+integer_literal = @{ "-"? ~ (!"0" ~ ASCII_DIGIT) ~ ASCII_DIGIT* }
+
+// types
+
+type      =  { type_name }
+type_name = _{ identifier }
+
+identifier_letter = { LETTER | "_" }
+
+identifier = @{ identifier_letter ~ (identifier_letter | ASCII_DIGIT)* }
+
+
+
+WHITESPACE = _{ " " | NEWLINE }
