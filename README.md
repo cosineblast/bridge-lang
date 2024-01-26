@@ -1,18 +1,19 @@
 
 # The bridge programming language
 
+## Bridge: The Idea
+
 Note: this is a very early draft of the overall design of the programming language.
 For ease of explanation, it assumes the reader is familiar with Haskell.
 It is not very suitable for didatic purposes.
 
-Bridge is (going to be) a programming language, aimed to provide
-a good pure functional programming experience to everyone.
+Bridge is meant a programming language, aimed to provide
+a decent pure functional programming experience to everyone.
 
 To allow for that, the bridge language must both support and incenctiize pure functional
 programming, but also support easy mutable data and side effect usage when deemed necessary.
 
-To achieve that, bridge aims to have function multiple categories of functions.
-
+To achieve that, the main idea behind bridge is the classification of pure and impure functions.
 
 1. Pure functions by default
 
@@ -42,7 +43,7 @@ function call erasure.
 
 2. Side Effects: `effect` and `mut`
 
-## `effect`
+### `effect`
 
 Functions can be marked as `effect`, so that they can call other effect functions,
 perform FFI calls, and other IO operations.
@@ -59,7 +60,7 @@ call vector libraries.
 
 All `effect` functions are implictly mut functions as well (open to change).
 
-## `mut`
+### `mut`
 
 Functions can also be marked as `mut`, so that they can perform variable and object mutation.
 It also allows for the usage of loop constructs.
@@ -102,3 +103,11 @@ the compiler must have some form of type tagging mut types, similar to `Send` or
 
 Additionally, global mut values are banned.
 
+
+## TODO
+
+- Implement basic initial parser
+- Implement basic type system
+- Implement compiler
+- Decide compilation backend (Haskell?, C?)
+- Decide whether to make a category of functions that can abort execution
