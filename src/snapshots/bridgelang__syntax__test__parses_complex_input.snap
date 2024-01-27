@@ -34,5 +34,13 @@ declarations:
                       Integer: 30
               else_branch: ~
         - Expression:
-            Identifier: bye
+            FunctionCall:
+              name: ls
+              arguments:
+                - Literal:
+                    Integer: 1
+        - Expression:
+            FunctionCall:
+              name: bye
+              arguments: []
 

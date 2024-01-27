@@ -119,7 +119,12 @@ pub fn parse_expression(source: Pair<Rule>) -> Expression {
             let mut stuff = source.into_inner();
             let name = stuff.next().unwrap().as_str().to_string();
             
-            let arguments: Vec<Expression> = stuff.next().unwrap().into_inner().map(|node| parse_expression(node)).collect();
+            let arguments: Vec<Expression> = 
+                stuff.next()
+                     .map(|it| it.into_inner()
+                            .map(|node| parse_expression(node))
+                            .collect())
+                    .unwrap_or(Vec::new());
             
             Expression::FunctionCall(FunctionCallExpression {
                 name,
@@ -271,7 +276,8 @@ effect fn foo(x: i32, y: u32) -> u32 {
     let y = 20;
 
     if (food) { 30 }
-    bye
+    ls(1);
+    bye()
 }
         "#;
         
