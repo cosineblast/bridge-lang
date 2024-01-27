@@ -16,6 +16,7 @@
               pkgs.cargo
               pkgs.rust-analyzer
               pkgs.rustc
+              pkgs.cargo-insta
             ];
           };
       });

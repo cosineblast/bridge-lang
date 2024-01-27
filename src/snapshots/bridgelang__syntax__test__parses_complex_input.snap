@@ -1,0 +1,38 @@
+---
+source: src/syntax.rs
+expression: module
+---
+declarations:
+  - Function:
+      name: foo
+      parameters:
+        - - x
+          - i32
+        - - y
+          - u32
+      return_type: u32
+      body:
+        - Let:
+            name: x
+            type_specifier: i32
+            value:
+              Literal:
+                Integer: 10
+        - Let:
+            name: y
+            type_specifier: ~
+            value:
+              Literal:
+                Integer: 20
+        - Expression:
+            If:
+              condition:
+                Identifier: food
+              then:
+                - Expression:
+                    Literal:
+                      Integer: 30
+              else_branch: ~
+        - Expression:
+            Identifier: bye
+

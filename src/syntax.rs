@@ -1,22 +1,23 @@
 
 use pest::{iterators::Pair, Parser};
 use pest_derive::Parser;
+use serde::{Serialize, Deserialize};
 
 #[derive(Parser)]
 #[grammar = "syntax.pest"]
 struct PestParser;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Module {
     declarations: Vec<TopLevelDeclaration>
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum TopLevelDeclaration {
     Function(FunctionDeclaration)
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct FunctionDeclaration {
     name: Identifier,
     parameters: Vec<(Identifier, Type)>,
@@ -28,19 +29,20 @@ pub type Block = Vec<Statement>;
 type Identifier = String;
 type Type = String;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum Statement {
     Let(LetStatement),
     Expression(Expression)
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct LetStatement {
     name: String,
     type_specifier: Option<Type>,
     value: Box<Expression>
 }
-#[derive(Debug, PartialEq)]
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum Expression {
     If(IfExpression),
     Literal(LiteralExpression),
@@ -50,32 +52,32 @@ pub enum Expression {
     Identifier(IdentifierExpression),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct IfExpression {
     condition: Box<Expression>,
     then: Block,
     else_branch: Option<Block>
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum LiteralExpression {
     Integer(i64),
     String(String)
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct WhileExpression {
     condition: Box<Expression>,
     body: Block
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct BlockExpression(Block);
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct IdentifierExpression(String);
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct FunctionCallExpression {
     name: String,
     arguments: Vec<Expression>
@@ -275,57 +277,7 @@ effect fn foo(x: i32, y: u32) -> u32 {
         
         let module = parse_module(source).unwrap();
 
-        assert_eq!(module.declarations.len(), 1);
-        
-        // TODO: find something like nubank's matchers combinators
-
-        match &module.declarations[0] {
-            TopLevelDeclaration::Function(function) => {
-                assert_eq!(function.name, "foo");
-                assert_eq!(function.parameters.len(), 2);
-                assert_eq!(function.return_type, Some("u32".to_string()));
-                assert_eq!(function.body.len(), 4);
-                
-                match &function.body[0] {
-                    Statement::Let(let_statement) => {
-                        assert_eq!(let_statement.name, "x");
-                        assert_eq!(let_statement.type_specifier, Some("i32".to_string()));
-                        assert_eq!(let_statement.value, Box::new(Expression::Literal(LiteralExpression::Integer(10))));
-                    }
-                    _ => panic!("Unexpected statement")
-                }
-                
-                match &function.body[1] {
-                    Statement::Let(let_statement) => {
-                        assert_eq!(let_statement.name, "y");
-                        assert_eq!(let_statement.type_specifier, None);
-                        assert_eq!(let_statement.value, Box::new(Expression::Literal(LiteralExpression::Integer(20))));
-                    }
-                    _ => panic!("Unexpected statement")
-                }
-                
-                match &function.body[2] {
-                    Statement::Expression(Expression::If(if_expression)) => {
-                        assert_eq!(if_expression.condition, Box::new(Expression::Identifier(IdentifierExpression("food".to_string()))));
-                        assert_eq!(if_expression.then.len(), 1);
-                        assert_eq!(if_expression.else_branch, None);
-                        
-                        match &if_expression.then[0] {
-                            Statement::Expression(Expression::Literal(LiteralExpression::Integer(30))) => {},
-                            _ => panic!("Unexpected statement")
-                        }
-                    }
-                    _ => panic!("Unexpected expression")
-                };
-                
-                match &function.body[3] {
-                    Statement::Expression(Expression::Identifier(IdentifierExpression(string))) => {
-                        assert_eq!(string, "bye");
-                    },
-                    _ => panic!("Unexpected statement")
-                }
-            },
-        }
-    }
+        insta::assert_yaml_snapshot!(module);
+}
     
 }
