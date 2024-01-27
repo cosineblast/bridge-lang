@@ -2,6 +2,7 @@
 use pest::{iterators::Pair, Parser};
 use pest_derive::Parser;
 use serde::{Serialize, Deserialize};
+use anyhow::anyhow;
 
 #[derive(Parser)]
 #[grammar = "syntax.pest"]
@@ -83,16 +84,66 @@ pub struct FunctionCallExpression {
     arguments: Vec<Expression>
 }
 
+/// Our grammar ensures the valid string has correct \ escapes, 
+/// and ensures our string literal has " at the start and end, 
+/// so we better convert it to an ordinary string.
+fn handle_string_literal(string: &str) -> anyhow::Result<String> {
+    
+    let mut result = String::new();
+    
+    let mut chars = string.chars();
+    
+    // skip first quote
+    chars.next();
+    
+    // add everything (including ending quote)
+    // TODO: extract into another function
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            let next = chars.next().unwrap();
+            match next {
+                'n' => result.push('\n'),
+                't' => result.push('\t'),
+                '\\' => result.push('\\'),
+                '"' => result.push('"'),
+                'u' => {
+                    let mut unicode = String::new();
+                    for _ in 0..4 {
+                        unicode.push(chars.next().unwrap());
+                    }
+                    let code_point = u32::from_str_radix(&unicode, 16).unwrap();
+                    if let Some(c) = std::char::from_u32(code_point) {
+                        result.push(c);
+                    } else {
+                        return Err(anyhow!("Invalid unicode escape sequence: \\u{}", unicode));
+                    }
+                }
+                _ => return Err(anyhow!("Unexpected escape sequence: \\{}", next))
+            }
+        } else { 
+            result.push(c);
+        }
+    }
+    
+    // skip last quote
+    result.pop();
+    
+    Ok(result)
+}
 
-pub fn parse_expression(source: Pair<Rule>) -> Expression {
-    match source.as_rule() {
+
+pub fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
+    let expression = match source.as_rule() {
         Rule::if_expression =>  {
             let mut source = source.into_inner();
 
             let if_expression = IfExpression {
-                condition: Box::new(parse_expression(source.next().unwrap())),
-                then: parse_block(source.next().unwrap().into_inner().next().unwrap()),
-                else_branch: source.next().map(|it| parse_block(it.into_inner().next().unwrap()))
+                condition: Box::new(parse_expression(source.next().unwrap())?),
+                then: parse_block(source.next().unwrap().into_inner().next().unwrap())?,
+                else_branch: source
+                    .next()
+                    .map(|it| parse_block(it.into_inner().next().unwrap()))
+                    .transpose()?
             };
 
             Expression::If(if_expression)
@@ -102,14 +153,14 @@ pub fn parse_expression(source: Pair<Rule>) -> Expression {
             let literal = source.next().unwrap();
             match literal.as_rule() {
                 Rule::integer_literal => Expression::Literal(LiteralExpression::Integer(literal.as_str().parse().unwrap())),
-                Rule::string_literal => Expression::Literal(LiteralExpression::String(literal.as_str().to_string())),
+                Rule::string_literal => Expression::Literal(LiteralExpression::String(handle_string_literal(literal.as_str())?)),
                 _ => panic!("Unexpected rule: {:?}", literal.as_rule())
             }
         },
         Rule::while_expression => {
             let mut source = source.into_inner();
-            let condition = Box::new(parse_expression(source.next().unwrap()));
-            let body = parse_block(source.next().unwrap().into_inner().next().unwrap());
+            let condition = Box::new(parse_expression(source.next().unwrap())?);
+            let body = parse_block(source.next().unwrap().into_inner().next().unwrap())?;
             Expression::While(WhileExpression {
                 condition,
                 body
@@ -119,12 +170,14 @@ pub fn parse_expression(source: Pair<Rule>) -> Expression {
             let mut stuff = source.into_inner();
             let name = stuff.next().unwrap().as_str().to_string();
             
-            let arguments: Vec<Expression> = 
-                stuff.next()
-                     .map(|it| it.into_inner()
-                            .map(|node| parse_expression(node))
-                            .collect())
-                    .unwrap_or(Vec::new());
+            let mut arguments = Vec::new();
+            
+            if let Some(item) = stuff.next() {
+                for it in item.into_inner() {
+                    arguments.push(parse_expression(it)?);
+                }
+            }
+                    
             
             Expression::FunctionCall(FunctionCallExpression {
                 name,
@@ -133,16 +186,18 @@ pub fn parse_expression(source: Pair<Rule>) -> Expression {
             
         },
         Rule::block => {
-            Expression::Block(BlockExpression(parse_block(source)))
+            Expression::Block(BlockExpression(parse_block(source)?))
         },
         Rule::identifier => {
             Expression::Identifier(IdentifierExpression(source.as_str().to_string()))
         },
         _ => panic!("Unexpected rule: {:?}", source.as_rule())
-    }
+    };
+
+    Ok(expression)
 }
 
-pub fn parse_let_statement(source: Pair<Rule>) -> LetStatement {
+pub fn parse_let_statement(source: Pair<Rule>) -> anyhow::Result<LetStatement> {
     assert_eq!(source.as_rule(), Rule::let_statement);
 
     let mut stuff = source.into_inner();
@@ -158,16 +213,18 @@ pub fn parse_let_statement(source: Pair<Rule>) -> LetStatement {
         None
     };
     
-    let value = Box::new(parse_expression(stuff.next().unwrap()));
+    let value = Box::new(parse_expression(stuff.next().unwrap())?);
     
-    LetStatement {
+    let result = LetStatement {
         name,
         type_specifier,
         value
-    }
+    };
+
+    Ok(result)
 }
 
-pub fn parse_block(source: Pair<Rule>) -> Block {
+pub fn parse_block(source: Pair<Rule>) -> anyhow::Result<Block> {
     assert_eq!(source.as_rule(), Rule::block);
     
     let mut statements = Vec::new();
@@ -175,26 +232,26 @@ pub fn parse_block(source: Pair<Rule>) -> Block {
     for node in source.into_inner() {
         match node.as_rule() {
             Rule::let_statement => {
-                statements.push(Statement::Let(parse_let_statement(node)));
+                statements.push(Statement::Let(parse_let_statement(node)?));
             },
 
             Rule::block_statement => {
-                statements.push(Statement::Expression(parse_expression(node.into_inner().next().unwrap())));
+                statements.push(Statement::Expression(parse_expression(node.into_inner().next().unwrap())?));
             },
 
             Rule::expression_statement => {
-                statements.push(Statement::Expression(parse_expression(node.into_inner().next().unwrap())));
+                statements.push(Statement::Expression(parse_expression(node.into_inner().next().unwrap())?));
             }
             
             _ => panic!("Unexpected rule: {:?}", node.as_rule())
             }
         }
-    
-    statements
+
+    Ok(statements)
 }
 
 
-pub fn parse_function_declaration(source: Pair<Rule>) -> FunctionDeclaration {
+pub fn parse_function_declaration(source: Pair<Rule>) -> anyhow::Result<FunctionDeclaration> {
     
     let mut stuff = source.into_inner();
     
@@ -209,14 +266,14 @@ pub fn parse_function_declaration(source: Pair<Rule>) -> FunctionDeclaration {
     
     let return_type = stuff.next().unwrap().into_inner().next().map(|node| node.as_str().to_string());
     
-    let body = parse_block(stuff.next().unwrap().into_inner().next().unwrap());
+    let body = parse_block(stuff.next().unwrap().into_inner().next().unwrap())?;
     
-    return FunctionDeclaration {
+    return Ok(FunctionDeclaration {
         name,
         parameters,
         return_type,
         body
-    };
+    });
 }
 
 pub fn parse_module(source: &str) -> anyhow::Result<Module> {
@@ -232,7 +289,7 @@ pub fn parse_module(source: &str) -> anyhow::Result<Module> {
     let mut declarations = Vec::new();
     
     for node in tree.into_inner() {
-        let function_declaration = parse_function_declaration(node);
+        let function_declaration = parse_function_declaration(node)?;
         
         declarations.push(TopLevelDeclaration::Function(function_declaration));
     }
@@ -266,6 +323,20 @@ mod test {
                 assert_eq!(function.body.len(), 0);
             }
         }
+    }
+
+    #[test]
+    fn parses_literals_correctly() {
+        let source = r#"
+        effect fn main() {
+            10;
+            "cool";
+            print("\"\u2211\ti = 0 to \\ n of i is n(n+1)/2\n\"");
+        }"#;
+        
+        let module = parse_module(source).unwrap();
+
+        insta::assert_yaml_snapshot!(module);
     }
     
     #[test]

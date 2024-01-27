@@ -1,0 +1,23 @@
+---
+source: src/syntax.rs
+expression: module
+---
+declarations:
+  - Function:
+      name: main
+      parameters: []
+      return_type: ~
+      body:
+        - Expression:
+            Literal:
+              Integer: 10
+        - Expression:
+            Literal:
+              String: cool
+        - Expression:
+            FunctionCall:
+              name: print
+              arguments:
+                - Literal:
+                    String: "\"∑\ti = 0 to \\ n of i is n(n+1)/2\n\""
+
