@@ -8,8 +8,15 @@ use anyhow::anyhow;
 #[grammar = "syntax.pest"]
 struct PestParser;
 
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Copy)]
+pub struct IndexSpan {
+    start: usize,
+    end: usize
+}
+
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Module {
+    pub span: IndexSpan,
     pub declarations: Vec<TopLevelDeclaration>
 }
 
@@ -20,15 +27,30 @@ pub enum TopLevelDeclaration {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct FunctionDeclaration {
+    pub span: IndexSpan,
     pub name: Identifier,
     pub parameters: Vec<(Identifier, Type)>,
     pub return_type: Option<Type>,
     pub body: Block
 }
 
-pub type Block = Vec<Statement>;
-type Identifier = String;
-type Type = String;
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct Block {
+    pub span: IndexSpan,
+    pub statements: Vec<Statement>
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct Identifier {
+    pub span: IndexSpan,
+    pub symbol: String,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct Type {
+    pub span: IndexSpan,
+    pub name: String
+}
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum Statement {
@@ -56,7 +78,7 @@ pub enum Expression {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct IfExpression {
     pub condition: Box<Expression>,
-    pub then: Block,
+    pub then_branch: Block,
     pub else_branch: Option<Block>
 }
 
@@ -82,6 +104,35 @@ pub struct IdentifierExpression(pub String);
 pub struct FunctionCallExpression {
     pub name: String,
     pub arguments: Vec<Expression>
+}
+
+impl From<&pest::Span<'_>> for IndexSpan {
+    fn from(span: &pest::Span<'_>) -> Self {
+        IndexSpan {
+            start: span.start(),
+            end: span.end()
+        }
+    }
+}
+
+impl From<&Pair<'_, Rule>> for Identifier {
+    fn from(pair: &Pair<'_, Rule>) -> Self {
+        Identifier {
+            span: IndexSpan::from(&pair.as_span()),
+            symbol: pair.as_str().to_string()
+        }
+    }
+}
+
+
+impl From<&Pair<'_, Rule>> for Type {
+    fn from(pair: &Pair<'_, Rule>) -> Self {
+        let identifier = Identifier::from(pair);
+        Type {
+            span: identifier.span,
+            name: identifier.symbol
+        }
+    }
 }
 
 /// Our grammar ensures the valid string has correct \ escapes,
@@ -139,7 +190,7 @@ fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
 
             let if_expression = IfExpression {
                 condition: Box::new(parse_expression(source.next().unwrap())?),
-                then: parse_block(source.next().unwrap().into_inner().next().unwrap())?,
+                then_branch: parse_block(source.next().unwrap().into_inner().next().unwrap())?,
                 else_branch: source
                     .next()
                     .map(|it| parse_block(it.into_inner().next().unwrap()))
@@ -208,7 +259,10 @@ fn parse_let_statement(source: Pair<Rule>) -> anyhow::Result<LetStatement> {
 
     let type_specifier =  if thing.as_rule() == Rule::type_specifier {
         stuff.next();
-        Some(thing.into_inner().next().unwrap().as_str().to_string())
+        let pair = thing.into_inner().next().unwrap();
+        let name = pair.as_str().to_string();
+        let span = IndexSpan::from(&pair.as_span());
+        Some(Type { name, span })
     } else {
         None
     };
@@ -229,6 +283,8 @@ fn parse_block(source: Pair<Rule>) -> anyhow::Result<Block> {
 
     let mut statements = Vec::new();
 
+    let span = IndexSpan::from(&source.as_span());
+
     for node in source.into_inner() {
         match node.as_rule() {
             Rule::let_statement => {
@@ -247,28 +303,33 @@ fn parse_block(source: Pair<Rule>) -> anyhow::Result<Block> {
             }
         }
 
-    Ok(statements)
+    Ok(Block {
+        span,
+        statements
+    })
 }
 
 
 fn parse_function_declaration(source: Pair<Rule>) -> anyhow::Result<FunctionDeclaration> {
+    let span = IndexSpan::from(&source.as_span());
 
     let mut stuff = source.into_inner();
 
-    let name = stuff.next().unwrap().as_str().to_string();
+    let name = Identifier::from(&stuff.next().unwrap());
 
     let parameters = stuff.next().unwrap().into_inner().map(|node| {
         let mut children = node.into_inner();
-        let name = children.next().unwrap().as_str().to_string();
-        let type_ = children.next().unwrap().as_str().to_string();
-        (name, type_)
+        let identifier = Identifier::from(&children.next().unwrap());
+        let type_value = Type::from(&children.next().unwrap());
+        (identifier, type_value)
     }).collect();
 
-    let return_type = stuff.next().unwrap().into_inner().next().map(|node| node.as_str().to_string());
+    let return_type = stuff.next().unwrap().into_inner().next().map(|it| Type::from(&it));
 
     let body = parse_block(stuff.next().unwrap().into_inner().next().unwrap())?;
 
     return Ok(FunctionDeclaration {
+        span,
         name,
         parameters,
         return_type,
@@ -283,6 +344,7 @@ pub fn parse_module(source: &str) -> anyhow::Result<Module> {
     assert_eq!(file.as_rule(), Rule::module_file);
 
     let tree = file.into_inner().next().unwrap();
+    let span = IndexSpan::from(&tree.as_span());
 
     assert_eq!(tree.as_rule(), Rule::module);
 
@@ -295,10 +357,16 @@ pub fn parse_module(source: &str) -> anyhow::Result<Module> {
     }
 
     Ok(Module {
+        span,
         declarations
     })
 }
 
+// TODO: add tests for span
+// right now, the insta tests don't show
+// the span, so they are currently untested
+// (e.g we can't know if the span really points to the right string
+//    just from the snapshot)
 #[cfg(test)]
 mod test {
 
@@ -317,10 +385,10 @@ mod test {
 
         match &module.declarations[0] {
             TopLevelDeclaration::Function(function) => {
-                assert_eq!(function.name, "main");
+                assert_eq!(function.name.symbol, "main");
                 assert_eq!(function.parameters.len(), 0);
                 assert_eq!(function.return_type, None);
-                assert_eq!(function.body.len(), 0);
+                assert_eq!(function.body.statements.len(), 0);
             }
         }
     }
@@ -336,7 +404,9 @@ mod test {
 
         let module = parse_module(source).unwrap();
 
-        insta::assert_yaml_snapshot!(module);
+        insta::assert_yaml_snapshot!(module, {
+            ".**.span" => "[span]"
+        });
     }
 
     #[test]
@@ -354,7 +424,9 @@ effect fn foo(x: i32, y: u32) -> u32 {
 
         let module = parse_module(source).unwrap();
 
-        insta::assert_yaml_snapshot!(module);
+        insta::assert_yaml_snapshot!(module, {
+            ".**.span" => "[span]"
+        });
 }
 
 }

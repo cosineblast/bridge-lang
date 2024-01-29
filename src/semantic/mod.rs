@@ -1,3 +1,4 @@
+
 use crate::syntax;
 use thiserror::Error;
 
@@ -57,7 +58,7 @@ impl SymbolDefinitionCheckState {
             },
             syntax::Expression::If(if_expression) => {
                 self.check_expression(&if_expression.condition)?;
-                self.check_block(&if_expression.then)?;
+                self.check_block(&if_expression.then_branch)?;
 
                 if let Some(else_branch) = &if_expression.else_branch {
                     self.check_block(else_branch)?;
@@ -92,7 +93,7 @@ impl SymbolDefinitionCheckState {
     fn check_block(&mut self, block: &syntax::Block) -> Result<(), SemanticError> {
         let mut block_declarations = Set::default();
 
-        for statement in block.iter() {
+        for statement in block.statements.iter() {
             match statement {
                 syntax::Statement::Expression(expression) => {
                     self.check_expression(expression)?;
@@ -118,7 +119,7 @@ impl SymbolDefinitionCheckState {
         // TODO: add module identifiers to global_symbols
 
         for parameter in function_declaration.parameters.iter() {
-            self.add_occurence(&parameter.0);
+            self.add_occurence(&parameter.0.symbol);
         }
 
         self.check_block(&function_declaration.body)?;
