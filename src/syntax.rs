@@ -10,7 +10,7 @@ struct PestParser;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Module {
-    declarations: Vec<TopLevelDeclaration>
+    pub declarations: Vec<TopLevelDeclaration>
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -20,10 +20,10 @@ pub enum TopLevelDeclaration {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct FunctionDeclaration {
-    name: Identifier,
-    parameters: Vec<(Identifier, Type)>,
-    return_type: Option<Type>,
-    body: Block
+    pub name: Identifier,
+    pub parameters: Vec<(Identifier, Type)>,
+    pub return_type: Option<Type>,
+    pub body: Block
 }
 
 pub type Block = Vec<Statement>;
@@ -38,9 +38,9 @@ pub enum Statement {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct LetStatement {
-    name: String,
-    type_specifier: Option<Type>,
-    value: Box<Expression>
+    pub name: String,
+    pub type_specifier: Option<Type>,
+    pub value: Box<Expression>
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -55,9 +55,9 @@ pub enum Expression {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct IfExpression {
-    condition: Box<Expression>,
-    then: Block,
-    else_branch: Option<Block>
+    pub condition: Box<Expression>,
+    pub then: Block,
+    pub else_branch: Option<Block>
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -68,34 +68,34 @@ pub enum LiteralExpression {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct WhileExpression {
-    condition: Box<Expression>,
-    body: Block
+    pub condition: Box<Expression>,
+    pub body: Block
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct BlockExpression(Block);
+pub struct BlockExpression(pub Block);
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct IdentifierExpression(String);
+pub struct IdentifierExpression(pub String);
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct FunctionCallExpression {
-    name: String,
-    arguments: Vec<Expression>
+    pub name: String,
+    pub arguments: Vec<Expression>
 }
 
-/// Our grammar ensures the valid string has correct \ escapes, 
-/// and ensures our string literal has " at the start and end, 
+/// Our grammar ensures the valid string has correct \ escapes,
+/// and ensures our string literal has " at the start and end,
 /// so we better convert it to an ordinary string.
 fn handle_string_literal(string: &str) -> anyhow::Result<String> {
-    
+
     let mut result = String::new();
-    
+
     let mut chars = string.chars();
-    
+
     // skip first quote
     chars.next();
-    
+
     // add everything (including ending quote)
     // TODO: extract into another function
     while let Some(c) = chars.next() {
@@ -120,19 +120,19 @@ fn handle_string_literal(string: &str) -> anyhow::Result<String> {
                 }
                 _ => return Err(anyhow!("Unexpected escape sequence: \\{}", next))
             }
-        } else { 
+        } else {
             result.push(c);
         }
     }
-    
+
     // skip last quote
     result.pop();
-    
+
     Ok(result)
 }
 
 
-pub fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
+fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
     let expression = match source.as_rule() {
         Rule::if_expression =>  {
             let mut source = source.into_inner();
@@ -169,21 +169,21 @@ pub fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
         Rule::function_call => {
             let mut stuff = source.into_inner();
             let name = stuff.next().unwrap().as_str().to_string();
-            
+
             let mut arguments = Vec::new();
-            
+
             if let Some(item) = stuff.next() {
                 for it in item.into_inner() {
                     arguments.push(parse_expression(it)?);
                 }
             }
-                    
-            
+
+
             Expression::FunctionCall(FunctionCallExpression {
                 name,
                 arguments
             })
-            
+
         },
         Rule::block => {
             Expression::Block(BlockExpression(parse_block(source)?))
@@ -197,24 +197,24 @@ pub fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
     Ok(expression)
 }
 
-pub fn parse_let_statement(source: Pair<Rule>) -> anyhow::Result<LetStatement> {
+fn parse_let_statement(source: Pair<Rule>) -> anyhow::Result<LetStatement> {
     assert_eq!(source.as_rule(), Rule::let_statement);
 
     let mut stuff = source.into_inner();
 
     let name = stuff.next().unwrap().as_str().to_string();
-    
+
     let thing = stuff.peek().unwrap();
-    
+
     let type_specifier =  if thing.as_rule() == Rule::type_specifier {
         stuff.next();
         Some(thing.into_inner().next().unwrap().as_str().to_string())
     } else {
         None
     };
-    
+
     let value = Box::new(parse_expression(stuff.next().unwrap())?);
-    
+
     let result = LetStatement {
         name,
         type_specifier,
@@ -224,11 +224,11 @@ pub fn parse_let_statement(source: Pair<Rule>) -> anyhow::Result<LetStatement> {
     Ok(result)
 }
 
-pub fn parse_block(source: Pair<Rule>) -> anyhow::Result<Block> {
+fn parse_block(source: Pair<Rule>) -> anyhow::Result<Block> {
     assert_eq!(source.as_rule(), Rule::block);
-    
+
     let mut statements = Vec::new();
-    
+
     for node in source.into_inner() {
         match node.as_rule() {
             Rule::let_statement => {
@@ -242,7 +242,7 @@ pub fn parse_block(source: Pair<Rule>) -> anyhow::Result<Block> {
             Rule::expression_statement => {
                 statements.push(Statement::Expression(parse_expression(node.into_inner().next().unwrap())?));
             }
-            
+
             _ => panic!("Unexpected rule: {:?}", node.as_rule())
             }
         }
@@ -251,23 +251,23 @@ pub fn parse_block(source: Pair<Rule>) -> anyhow::Result<Block> {
 }
 
 
-pub fn parse_function_declaration(source: Pair<Rule>) -> anyhow::Result<FunctionDeclaration> {
-    
+fn parse_function_declaration(source: Pair<Rule>) -> anyhow::Result<FunctionDeclaration> {
+
     let mut stuff = source.into_inner();
-    
+
     let name = stuff.next().unwrap().as_str().to_string();
-    
+
     let parameters = stuff.next().unwrap().into_inner().map(|node| {
         let mut children = node.into_inner();
         let name = children.next().unwrap().as_str().to_string();
         let type_ = children.next().unwrap().as_str().to_string();
         (name, type_)
     }).collect();
-    
+
     let return_type = stuff.next().unwrap().into_inner().next().map(|node| node.as_str().to_string());
-    
+
     let body = parse_block(stuff.next().unwrap().into_inner().next().unwrap())?;
-    
+
     return Ok(FunctionDeclaration {
         name,
         parameters,
@@ -277,23 +277,23 @@ pub fn parse_function_declaration(source: Pair<Rule>) -> anyhow::Result<Function
 }
 
 pub fn parse_module(source: &str) -> anyhow::Result<Module> {
-    
+
     let file = PestParser::parse(Rule::module_file, source)?.next().unwrap();
 
     assert_eq!(file.as_rule(), Rule::module_file);
-    
+
     let tree = file.into_inner().next().unwrap();
 
     assert_eq!(tree.as_rule(), Rule::module);
-    
+
     let mut declarations = Vec::new();
-    
+
     for node in tree.into_inner() {
         let function_declaration = parse_function_declaration(node)?;
-        
+
         declarations.push(TopLevelDeclaration::Function(function_declaration));
     }
-    
+
     Ok(Module {
         declarations
     })
@@ -301,7 +301,7 @@ pub fn parse_module(source: &str) -> anyhow::Result<Module> {
 
 #[cfg(test)]
 mod test {
-    
+
     use super::*;
 
     #[test]
@@ -312,9 +312,9 @@ mod test {
         "#;
 
         let module = parse_module(source).unwrap();
-        
+
         assert_eq!(module.declarations.len(), 1);
-        
+
         match &module.declarations[0] {
             TopLevelDeclaration::Function(function) => {
                 assert_eq!(function.name, "main");
@@ -333,12 +333,12 @@ mod test {
             "cool";
             print("\"\u2211\ti = 0 to \\ n of i is n(n+1)/2\n\"");
         }"#;
-        
+
         let module = parse_module(source).unwrap();
 
         insta::assert_yaml_snapshot!(module);
     }
-    
+
     #[test]
     fn parses_complex_input() {
         let source = r#"
@@ -351,10 +351,10 @@ effect fn foo(x: i32, y: u32) -> u32 {
     bye()
 }
         "#;
-        
+
         let module = parse_module(source).unwrap();
 
         insta::assert_yaml_snapshot!(module);
 }
-    
+
 }

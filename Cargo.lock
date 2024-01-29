@@ -26,6 +26,7 @@ dependencies = [
  "pest",
  "pest_derive",
  "serde",
+ "thiserror",
 ]
 
 [[package]]
