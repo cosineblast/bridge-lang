@@ -2,7 +2,7 @@ use crate::syntax;
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
-pub enum SemanticError {
+pub enum SemanticDiagnostic {
     #[error("This identifier is unknown")]
     UnknownIdentifier(String),
 }
@@ -20,6 +20,7 @@ fn get_prelude_symbols() -> Set<String> {
 struct SymbolDefinitionCheckState {
     global_symbols: Set<String>,
     local_occurences: Map<String, u32>,
+    diagnostics: Vec<SemanticDiagnostic>,
 }
 
 impl SymbolDefinitionCheckState {
@@ -27,6 +28,7 @@ impl SymbolDefinitionCheckState {
         SymbolDefinitionCheckState {
             global_symbols: get_prelude_symbols(),
             local_occurences: Map::default(),
+            diagnostics: vec![],
         }
     }
 
@@ -50,57 +52,56 @@ impl SymbolDefinitionCheckState {
         }
     }
 
-    fn check_expression(&mut self, expression: &syntax::Expression) -> Result<(), SemanticError> {
+    fn check_expression(&mut self, expression: &syntax::Expression) -> () {
         match expression {
             syntax::Expression::Literal(_) => {
                 // no problem here officer
                 // ~~unless we add string interpolation~~
             }
             syntax::Expression::If(if_expression) => {
-                self.check_expression(&if_expression.condition)?;
-                self.check_block(&if_expression.then_branch)?;
+                self.check_expression(&if_expression.condition);
+                self.check_block(&if_expression.then_branch);
 
                 if let Some(else_branch) = &if_expression.else_branch {
-                    self.check_block(else_branch)?;
+                    self.check_block(else_branch);
                 }
             }
             syntax::Expression::While(while_expression) => {
-                self.check_expression(&while_expression.condition)?;
-                self.check_block(&while_expression.body)?;
+                self.check_expression(&while_expression.condition);
+                self.check_block(&while_expression.body);
             }
             syntax::Expression::Block(block) => {
-                self.check_block(&block.0)?;
+                self.check_block(&block.0);
             }
             syntax::Expression::FunctionCall(call) => {
                 // TODO: handle function call expression whose functions
                 // aren't identifiers
 
                 for argument in call.arguments.iter() {
-                    self.check_expression(argument)?;
+                    self.check_expression(argument);
                 }
             }
             syntax::Expression::Identifier(identifier) => {
                 if !self.local_occurences.contains_key(&identifier.0)
                     && !self.global_symbols.contains(&identifier.0)
                 {
-                    return Err(SemanticError::UnknownIdentifier(identifier.0.clone()));
+                    self.diagnostics
+                        .push(SemanticDiagnostic::UnknownIdentifier(identifier.0.clone()));
                 }
             }
         }
-
-        Ok(())
     }
 
-    fn check_block(&mut self, block: &syntax::Block) -> Result<(), SemanticError> {
+    fn check_block(&mut self, block: &syntax::Block) {
         let mut block_declarations = Set::default();
 
         for statement in block.statements.iter() {
             match statement {
                 syntax::Statement::Expression(expression) => {
-                    self.check_expression(expression)?;
+                    self.check_expression(expression);
                 }
                 syntax::Statement::Let(declaration) => {
-                    self.check_expression(&declaration.value)?;
+                    self.check_expression(&declaration.value);
 
                     if block_declarations.insert(declaration.name.clone()) {
                         self.add_occurence(&declaration.name);
@@ -112,38 +113,31 @@ impl SymbolDefinitionCheckState {
         for declaration in block_declarations.iter() {
             self.remove_occurence(declaration);
         }
-
-        Ok(())
     }
 
-    fn check_function_declaration(
-        &mut self,
-        function_declaration: &syntax::FunctionDeclaration,
-    ) -> Result<(), SemanticError> {
+    fn check_function_declaration(&mut self, function_declaration: &syntax::FunctionDeclaration) {
         // TODO: add module identifiers to global_symbols
 
         for parameter in function_declaration.parameters.iter() {
             self.add_occurence(&parameter.0.symbol);
         }
 
-        self.check_block(&function_declaration.body)?;
-
-        Ok(())
+        self.check_block(&function_declaration.body);
     }
 }
 
-pub fn analyze_variable_usage(module: &syntax::Module) -> Result<(), SemanticError> {
+pub fn analyze_variable_usage(module: &syntax::Module) -> Vec<SemanticDiagnostic> {
     let mut state = SymbolDefinitionCheckState::init();
 
     for top_level in module.declarations.iter() {
         match top_level {
             syntax::TopLevelDeclaration::Function(function_declaration) => {
-                state.check_function_declaration(function_declaration)?
+                state.check_function_declaration(function_declaration)
             }
         }
     }
 
-    Ok(())
+    state.diagnostics
 }
 
 #[cfg(test)]
@@ -167,7 +161,7 @@ mod test {
 
         assert_eq!(
             result,
-            Err(SemanticError::UnknownIdentifier("y".to_string()))
+            vec![SemanticDiagnostic::UnknownIdentifier("y".to_string())]
         );
     }
 
@@ -188,7 +182,7 @@ mod test {
 
         let result = analyze_variable_usage(&module);
 
-        assert_eq!(result, Ok(()));
+        assert_eq!(result, vec![]);
     }
 
     #[test]
@@ -206,7 +200,7 @@ mod test {
 
         let result = analyze_variable_usage(&module);
 
-        assert_eq!(result, Ok(()));
+        assert_eq!(result, vec![]);
     }
 
     #[test]
@@ -227,7 +221,7 @@ mod test {
 
         assert_eq!(
             result,
-            Err(SemanticError::UnknownIdentifier("z".to_string()))
+            vec![SemanticDiagnostic::UnknownIdentifier("z".to_string())]
         );
     }
 }
