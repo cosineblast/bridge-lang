@@ -77,19 +77,28 @@ impl SymbolDefinitionCheckState {
                 // TODO: handle function call expression whose functions
                 // aren't identifiers
 
+                self.check_identifier(call.name.to_owned());
+
                 for argument in call.arguments.iter() {
                     self.check_expression(argument);
                 }
             }
             syntax::Expression::Identifier(identifier) => {
-                if !self.local_occurences.contains_key(&identifier.0)
-                    && !self.global_symbols.contains(&identifier.0)
-                {
-                    self.diagnostics
-                        .push(SemanticDiagnostic::UnknownIdentifier(identifier.0.clone()));
-                }
+                self.check_identifier(identifier.0.clone());
             }
         }
+    }
+
+
+    fn check_identifier(&mut self, name: String) {
+
+        if !self.local_occurences.contains_key(&name)
+            && !self.global_symbols.contains(&name)
+            {
+                self.diagnostics
+                    .push(SemanticDiagnostic::UnknownIdentifier(name));
+            }
+
     }
 
     fn check_block(&mut self, block: &syntax::Block) {
@@ -151,7 +160,8 @@ mod test {
         let src = r#"
         effect fn foo() {
             let x = 1;
-            if (x) { x } { y };
+            if (x) { x } { y; z };
+            jooj()
         }
         "#;
 
@@ -161,7 +171,11 @@ mod test {
 
         assert_eq!(
             result,
-            vec![SemanticDiagnostic::UnknownIdentifier("y".to_string())]
+            vec![
+            SemanticDiagnostic::UnknownIdentifier("y".to_string()),
+            SemanticDiagnostic::UnknownIdentifier("z".to_string()),
+            SemanticDiagnostic::UnknownIdentifier("jooj".to_string())
+            ]
         );
     }
 
@@ -212,6 +226,8 @@ mod test {
             while (x) {
                 z;
             }
+
+            z;
         }
         "#;
 
@@ -221,7 +237,9 @@ mod test {
 
         assert_eq!(
             result,
-            vec![SemanticDiagnostic::UnknownIdentifier("z".to_string())]
+            vec![ SemanticDiagnostic::UnknownIdentifier("z".to_string()),
+                SemanticDiagnostic::UnknownIdentifier("z".to_string()),
+            ]
         );
     }
 }
