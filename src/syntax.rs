@@ -1,8 +1,7 @@
-
+use anyhow::anyhow;
 use pest::{iterators::Pair, Parser};
 use pest_derive::Parser;
-use serde::{Serialize, Deserialize};
-use anyhow::anyhow;
+use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]
 #[grammar = "syntax.pest"]
@@ -11,18 +10,18 @@ struct PestParser;
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Copy)]
 pub struct IndexSpan {
     start: usize,
-    end: usize
+    end: usize,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Module {
     pub span: IndexSpan,
-    pub declarations: Vec<TopLevelDeclaration>
+    pub declarations: Vec<TopLevelDeclaration>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum TopLevelDeclaration {
-    Function(FunctionDeclaration)
+    Function(FunctionDeclaration),
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -31,13 +30,13 @@ pub struct FunctionDeclaration {
     pub name: Identifier,
     pub parameters: Vec<(Identifier, Type)>,
     pub return_type: Option<Type>,
-    pub body: Block
+    pub body: Block,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Block {
     pub span: IndexSpan,
-    pub statements: Vec<Statement>
+    pub statements: Vec<Statement>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -49,20 +48,20 @@ pub struct Identifier {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Type {
     pub span: IndexSpan,
-    pub name: String
+    pub name: String,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum Statement {
     Let(LetStatement),
-    Expression(Expression)
+    Expression(Expression),
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct LetStatement {
     pub name: String,
     pub type_specifier: Option<Type>,
-    pub value: Box<Expression>
+    pub value: Box<Expression>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -79,19 +78,19 @@ pub enum Expression {
 pub struct IfExpression {
     pub condition: Box<Expression>,
     pub then_branch: Block,
-    pub else_branch: Option<Block>
+    pub else_branch: Option<Block>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum LiteralExpression {
     Integer(i64),
-    String(String)
+    String(String),
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct WhileExpression {
     pub condition: Box<Expression>,
-    pub body: Block
+    pub body: Block,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -103,14 +102,14 @@ pub struct IdentifierExpression(pub String);
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct FunctionCallExpression {
     pub name: String,
-    pub arguments: Vec<Expression>
+    pub arguments: Vec<Expression>,
 }
 
 impl From<&pest::Span<'_>> for IndexSpan {
     fn from(span: &pest::Span<'_>) -> Self {
         IndexSpan {
             start: span.start(),
-            end: span.end()
+            end: span.end(),
         }
     }
 }
@@ -119,18 +118,17 @@ impl From<&Pair<'_, Rule>> for Identifier {
     fn from(pair: &Pair<'_, Rule>) -> Self {
         Identifier {
             span: IndexSpan::from(&pair.as_span()),
-            symbol: pair.as_str().to_string()
+            symbol: pair.as_str().to_string(),
         }
     }
 }
-
 
 impl From<&Pair<'_, Rule>> for Type {
     fn from(pair: &Pair<'_, Rule>) -> Self {
         let identifier = Identifier::from(pair);
         Type {
             span: identifier.span,
-            name: identifier.symbol
+            name: identifier.symbol,
         }
     }
 }
@@ -139,7 +137,6 @@ impl From<&Pair<'_, Rule>> for Type {
 /// and ensures our string literal has " at the start and end,
 /// so we better convert it to an ordinary string.
 fn handle_string_literal(string: &str) -> anyhow::Result<String> {
-
     let mut result = String::new();
 
     let mut chars = string.chars();
@@ -169,7 +166,7 @@ fn handle_string_literal(string: &str) -> anyhow::Result<String> {
                         return Err(anyhow!("Invalid unicode escape sequence: \\u{}", unicode));
                     }
                 }
-                _ => return Err(anyhow!("Unexpected escape sequence: \\{}", next))
+                _ => return Err(anyhow!("Unexpected escape sequence: \\{}", next)),
             }
         } else {
             result.push(c);
@@ -182,10 +179,9 @@ fn handle_string_literal(string: &str) -> anyhow::Result<String> {
     Ok(result)
 }
 
-
 fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
     let expression = match source.as_rule() {
-        Rule::if_expression =>  {
+        Rule::if_expression => {
             let mut source = source.into_inner();
 
             let if_expression = IfExpression {
@@ -194,29 +190,30 @@ fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
                 else_branch: source
                     .next()
                     .map(|it| parse_block(it.into_inner().next().unwrap()))
-                    .transpose()?
+                    .transpose()?,
             };
 
             Expression::If(if_expression)
-        },
+        }
         Rule::literal => {
             let mut source = source.into_inner();
             let literal = source.next().unwrap();
             match literal.as_rule() {
-                Rule::integer_literal => Expression::Literal(LiteralExpression::Integer(literal.as_str().parse().unwrap())),
-                Rule::string_literal => Expression::Literal(LiteralExpression::String(handle_string_literal(literal.as_str())?)),
-                _ => panic!("Unexpected rule: {:?}", literal.as_rule())
+                Rule::integer_literal => Expression::Literal(LiteralExpression::Integer(
+                    literal.as_str().parse().unwrap(),
+                )),
+                Rule::string_literal => Expression::Literal(LiteralExpression::String(
+                    handle_string_literal(literal.as_str())?,
+                )),
+                _ => panic!("Unexpected rule: {:?}", literal.as_rule()),
             }
-        },
+        }
         Rule::while_expression => {
             let mut source = source.into_inner();
             let condition = Box::new(parse_expression(source.next().unwrap())?);
             let body = parse_block(source.next().unwrap().into_inner().next().unwrap())?;
-            Expression::While(WhileExpression {
-                condition,
-                body
-            })
-        },
+            Expression::While(WhileExpression { condition, body })
+        }
         Rule::function_call => {
             let mut stuff = source.into_inner();
             let name = stuff.next().unwrap().as_str().to_string();
@@ -229,20 +226,13 @@ fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
                 }
             }
 
-
-            Expression::FunctionCall(FunctionCallExpression {
-                name,
-                arguments
-            })
-
-        },
-        Rule::block => {
-            Expression::Block(BlockExpression(parse_block(source)?))
-        },
+            Expression::FunctionCall(FunctionCallExpression { name, arguments })
+        }
+        Rule::block => Expression::Block(BlockExpression(parse_block(source)?)),
         Rule::identifier => {
             Expression::Identifier(IdentifierExpression(source.as_str().to_string()))
-        },
-        _ => panic!("Unexpected rule: {:?}", source.as_rule())
+        }
+        _ => panic!("Unexpected rule: {:?}", source.as_rule()),
     };
 
     Ok(expression)
@@ -257,7 +247,7 @@ fn parse_let_statement(source: Pair<Rule>) -> anyhow::Result<LetStatement> {
 
     let thing = stuff.peek().unwrap();
 
-    let type_specifier =  if thing.as_rule() == Rule::type_specifier {
+    let type_specifier = if thing.as_rule() == Rule::type_specifier {
         stuff.next();
         let pair = thing.into_inner().next().unwrap();
         let name = pair.as_str().to_string();
@@ -272,7 +262,7 @@ fn parse_let_statement(source: Pair<Rule>) -> anyhow::Result<LetStatement> {
     let result = LetStatement {
         name,
         type_specifier,
-        value
+        value,
     };
 
     Ok(result)
@@ -289,26 +279,26 @@ fn parse_block(source: Pair<Rule>) -> anyhow::Result<Block> {
         match node.as_rule() {
             Rule::let_statement => {
                 statements.push(Statement::Let(parse_let_statement(node)?));
-            },
+            }
 
             Rule::block_statement => {
-                statements.push(Statement::Expression(parse_expression(node.into_inner().next().unwrap())?));
-            },
+                statements.push(Statement::Expression(parse_expression(
+                    node.into_inner().next().unwrap(),
+                )?));
+            }
 
             Rule::expression_statement => {
-                statements.push(Statement::Expression(parse_expression(node.into_inner().next().unwrap())?));
+                statements.push(Statement::Expression(parse_expression(
+                    node.into_inner().next().unwrap(),
+                )?));
             }
 
-            _ => panic!("Unexpected rule: {:?}", node.as_rule())
-            }
+            _ => panic!("Unexpected rule: {:?}", node.as_rule()),
         }
+    }
 
-    Ok(Block {
-        span,
-        statements
-    })
+    Ok(Block { span, statements })
 }
-
 
 fn parse_function_declaration(source: Pair<Rule>) -> anyhow::Result<FunctionDeclaration> {
     let span = IndexSpan::from(&source.as_span());
@@ -317,14 +307,24 @@ fn parse_function_declaration(source: Pair<Rule>) -> anyhow::Result<FunctionDecl
 
     let name = Identifier::from(&stuff.next().unwrap());
 
-    let parameters = stuff.next().unwrap().into_inner().map(|node| {
-        let mut children = node.into_inner();
-        let identifier = Identifier::from(&children.next().unwrap());
-        let type_value = Type::from(&children.next().unwrap());
-        (identifier, type_value)
-    }).collect();
+    let parameters = stuff
+        .next()
+        .unwrap()
+        .into_inner()
+        .map(|node| {
+            let mut children = node.into_inner();
+            let identifier = Identifier::from(&children.next().unwrap());
+            let type_value = Type::from(&children.next().unwrap());
+            (identifier, type_value)
+        })
+        .collect();
 
-    let return_type = stuff.next().unwrap().into_inner().next().map(|it| Type::from(&it));
+    let return_type = stuff
+        .next()
+        .unwrap()
+        .into_inner()
+        .next()
+        .map(|it| Type::from(&it));
 
     let body = parse_block(stuff.next().unwrap().into_inner().next().unwrap())?;
 
@@ -333,13 +333,14 @@ fn parse_function_declaration(source: Pair<Rule>) -> anyhow::Result<FunctionDecl
         name,
         parameters,
         return_type,
-        body
+        body,
     });
 }
 
 pub fn parse_module(source: &str) -> anyhow::Result<Module> {
-
-    let file = PestParser::parse(Rule::module_file, source)?.next().unwrap();
+    let file = PestParser::parse(Rule::module_file, source)?
+        .next()
+        .unwrap();
 
     assert_eq!(file.as_rule(), Rule::module_file);
 
@@ -356,10 +357,7 @@ pub fn parse_module(source: &str) -> anyhow::Result<Module> {
         declarations.push(TopLevelDeclaration::Function(function_declaration));
     }
 
-    Ok(Module {
-        span,
-        declarations
-    })
+    Ok(Module { span, declarations })
 }
 
 // TODO: add tests for span
@@ -427,6 +425,5 @@ effect fn foo(x: i32, y: u32) -> u32 {
         insta::assert_yaml_snapshot!(module, {
             ".**.span" => "[span]"
         });
-}
-
+    }
 }
