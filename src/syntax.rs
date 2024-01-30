@@ -328,13 +328,13 @@ fn parse_function_declaration(source: Pair<Rule>) -> anyhow::Result<FunctionDecl
 
     let body = parse_block(stuff.next().unwrap().into_inner().next().unwrap())?;
 
-    return Ok(FunctionDeclaration {
+    Ok(FunctionDeclaration {
         span,
         name,
         parameters,
         return_type,
         body,
-    });
+    })
 }
 
 pub fn parse_module(source: &str) -> anyhow::Result<Module> {

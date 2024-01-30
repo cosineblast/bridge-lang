@@ -4,6 +4,7 @@ import sh
 
 def main():
     sh.cargo('fmt')
+    sh.cargo('clippy')
 
 if __name__ == '__main__':
     main()
