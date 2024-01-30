@@ -19,6 +19,10 @@
               pkgs.rustfmt
               pkgs.clippy
               pkgs.cargo-insta
+
+              # for .githook tools
+              pkgs.python3
+              pkgs.python3Packages.sh
             ];
           };
       });
