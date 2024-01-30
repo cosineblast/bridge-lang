@@ -89,16 +89,11 @@ impl SymbolDefinitionCheckState {
         }
     }
 
-
     fn check_identifier(&mut self, name: String) {
-
-        if !self.local_occurences.contains_key(&name)
-            && !self.global_symbols.contains(&name)
-            {
-                self.diagnostics
-                    .push(SemanticDiagnostic::UnknownIdentifier(name));
-            }
-
+        if !self.local_occurences.contains_key(&name) && !self.global_symbols.contains(&name) {
+            self.diagnostics
+                .push(SemanticDiagnostic::UnknownIdentifier(name));
+        }
     }
 
     fn check_block(&mut self, block: &syntax::Block) {
@@ -133,10 +128,23 @@ impl SymbolDefinitionCheckState {
 
         self.check_block(&function_declaration.body);
     }
+
+    fn add_module_identifiers(&mut self, module: &syntax::Module) {
+        for top_level in module.declarations.iter() {
+            match top_level {
+                syntax::TopLevelDeclaration::Function(function_declaration) => {
+                    self.global_symbols
+                        .insert(function_declaration.name.symbol.clone());
+                }
+            }
+        }
+    }
 }
 
 pub fn analyze_variable_usage(module: &syntax::Module) -> Vec<SemanticDiagnostic> {
     let mut state = SymbolDefinitionCheckState::init();
+
+    state.add_module_identifiers(module);
 
     for top_level in module.declarations.iter() {
         match top_level {
@@ -172,9 +180,9 @@ mod test {
         assert_eq!(
             result,
             vec![
-            SemanticDiagnostic::UnknownIdentifier("y".to_string()),
-            SemanticDiagnostic::UnknownIdentifier("z".to_string()),
-            SemanticDiagnostic::UnknownIdentifier("jooj".to_string())
+                SemanticDiagnostic::UnknownIdentifier("y".to_string()),
+                SemanticDiagnostic::UnknownIdentifier("z".to_string()),
+                SemanticDiagnostic::UnknownIdentifier("jooj".to_string())
             ]
         );
     }
@@ -237,9 +245,35 @@ mod test {
 
         assert_eq!(
             result,
-            vec![ SemanticDiagnostic::UnknownIdentifier("z".to_string()),
+            vec![
+                SemanticDiagnostic::UnknownIdentifier("z".to_string()),
                 SemanticDiagnostic::UnknownIdentifier("z".to_string()),
             ]
+        );
+    }
+
+    #[test]
+    fn test_module_cross_reference() {
+        let src = r#"
+        effect fn foo() {
+            foo();
+            bar();
+        }
+
+        effect fn bar() {
+            foo();
+            bar();
+            jooj();
+        }
+        "#;
+
+        let module = syntax::parse_module(src).unwrap();
+
+        let result = analyze_variable_usage(&module);
+
+        assert_eq!(
+            result,
+            vec![SemanticDiagnostic::UnknownIdentifier("jooj".to_string()),]
         );
     }
 }
