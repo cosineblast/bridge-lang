@@ -25,7 +25,9 @@ declarations:
         span: "[span]"
         statements:
           - Let:
-              name: x
+              name:
+                span: "[span]"
+                symbol: x
               type_specifier:
                 span: "[span]"
                 name: i32
@@ -33,7 +35,9 @@ declarations:
                 Literal:
                   Integer: 10
           - Let:
-              name: y
+              name:
+                span: "[span]"
+                symbol: y
               type_specifier: ~
               value:
                 Literal:
@@ -41,7 +45,9 @@ declarations:
           - Expression:
               If:
                 condition:
-                  Identifier: food
+                  Identifier:
+                    span: "[span]"
+                    symbol: food
                 then_branch:
                   span: "[span]"
                   statements:
@@ -51,12 +57,16 @@ declarations:
                 else_branch: ~
           - Expression:
               FunctionCall:
-                name: ls
+                name:
+                  span: "[span]"
+                  symbol: ls
                 arguments:
                   - Literal:
                       Integer: 1
           - Expression:
               FunctionCall:
-                name: bye
+                name:
+                  span: "[span]"
+                  symbol: bye
                 arguments: []
 

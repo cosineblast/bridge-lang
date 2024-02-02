@@ -22,7 +22,9 @@ declarations:
                 String: cool
           - Expression:
               FunctionCall:
-                name: print
+                name:
+                  span: "[span]"
+                  symbol: print
                 arguments:
                   - Literal:
                       String: "\"∑\ti = 0 to \\ n of i is n(n+1)/2\n\""

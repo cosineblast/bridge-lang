@@ -59,7 +59,7 @@ pub enum Statement {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct LetStatement {
-    pub name: String,
+    pub name: Identifier,
     pub type_specifier: Option<Type>,
     pub value: Box<Expression>,
 }
@@ -97,11 +97,11 @@ pub struct WhileExpression {
 pub struct BlockExpression(pub Block);
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct IdentifierExpression(pub String);
+pub struct IdentifierExpression(pub Identifier);
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct FunctionCallExpression {
-    pub name: String,
+    pub name: Identifier,
     pub arguments: Vec<Expression>,
 }
 
@@ -216,7 +216,7 @@ fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
         }
         Rule::function_call => {
             let mut stuff = source.into_inner();
-            let name = stuff.next().unwrap().as_str().to_string();
+            let name = Identifier::from(&stuff.next().unwrap());
 
             let mut arguments = Vec::new();
 
@@ -229,9 +229,7 @@ fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
             Expression::FunctionCall(FunctionCallExpression { name, arguments })
         }
         Rule::block => Expression::Block(BlockExpression(parse_block(source)?)),
-        Rule::identifier => {
-            Expression::Identifier(IdentifierExpression(source.as_str().to_string()))
-        }
+        Rule::identifier => Expression::Identifier(IdentifierExpression(Identifier::from(&source))),
         _ => panic!("Unexpected rule: {:?}", source.as_rule()),
     };
 
@@ -243,7 +241,7 @@ fn parse_let_statement(source: Pair<Rule>) -> anyhow::Result<LetStatement> {
 
     let mut stuff = source.into_inner();
 
-    let name = stuff.next().unwrap().as_str().to_string();
+    let name = Identifier::from(&stuff.next().unwrap());
 
     let thing = stuff.peek().unwrap();
 
