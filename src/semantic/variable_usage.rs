@@ -17,42 +17,57 @@ fn get_prelude_symbols() -> Set<String> {
         .collect()
 }
 
-struct SymbolDefinitionCheckState {
-    global_symbols: Set<String>,
-    local_occurences: Map<String, u32>,
-    diagnostics: Vec<SemanticDiagnostic>,
+#[derive(Default)]
+pub struct DeclarationCounter {
+    counter: Map<String, u32>,
 }
 
-impl SymbolDefinitionCheckState {
-    fn init() -> SymbolDefinitionCheckState {
-        SymbolDefinitionCheckState {
-            global_symbols: get_prelude_symbols(),
-            local_occurences: Map::default(),
-            diagnostics: vec![],
-        }
-    }
-
-    fn add_occurence(&mut self, name: &str) {
-        self.local_occurences
+impl DeclarationCounter {
+    pub fn add(&mut self, name: &str) {
+        self.counter
             .entry(name.to_owned())
             .and_modify(|count| *count += 1)
             .or_insert(1);
     }
 
-    fn remove_occurence(&mut self, name: &str) {
+
+    pub fn subtract(&mut self, name: &str) {
         let value = self
-            .local_occurences
+            .counter
             .get_mut(name)
-            .expect("Tried to remove unknown identifier");
+            .expect("Tried to remove undeclared identifier");
 
         if *value == 1 {
-            self.local_occurences.remove(name);
+            self.counter.remove(name);
         } else {
             *value -= 1;
         }
     }
 
-    fn check_expression(&mut self, expression: &syntax::Expression) -> () {
+    pub fn contains(&self, name: &str) -> bool {
+        self.counter.contains_key(name)
+    }
+}
+
+
+struct SymbolDefinitionCheckState {
+    global_symbols: Set<String>,
+    declarations: DeclarationCounter,
+    diagnostics: Vec<SemanticDiagnostic>,
+}
+
+
+
+impl SymbolDefinitionCheckState {
+    fn init() -> SymbolDefinitionCheckState {
+        SymbolDefinitionCheckState {
+            global_symbols: get_prelude_symbols(),
+            declarations: DeclarationCounter::default(),
+            diagnostics: vec![],
+        }
+    }
+
+    fn check_expression(&mut self, expression: &syntax::Expression) {
         match expression {
             syntax::Expression::Literal(_) => {
                 // no problem here officer
@@ -90,7 +105,7 @@ impl SymbolDefinitionCheckState {
     }
 
     fn check_identifier(&mut self, name: String) {
-        if !self.local_occurences.contains_key(&name) && !self.global_symbols.contains(&name) {
+        if !self.declarations.contains(&name) && !self.global_symbols.contains(&name) {
             self.diagnostics
                 .push(SemanticDiagnostic::UnknownIdentifier(name));
         }
@@ -108,14 +123,14 @@ impl SymbolDefinitionCheckState {
                     self.check_expression(&declaration.value);
 
                     if block_declarations.insert(declaration.name.symbol.clone()) {
-                        self.add_occurence(&declaration.name.symbol);
+                        self.declarations.add(&declaration.name.symbol);
                     }
                 }
             }
         }
 
         for declaration in block_declarations.iter() {
-            self.remove_occurence(declaration);
+            self.declarations.subtract(declaration);
         }
     }
 
@@ -123,7 +138,7 @@ impl SymbolDefinitionCheckState {
         // TODO: add module identifiers to global_symbols
 
         for parameter in function_declaration.parameters.iter() {
-            self.add_occurence(&parameter.0.symbol);
+            self.declarations.add(&parameter.0.symbol);
         }
 
         self.check_block(&function_declaration.body);
