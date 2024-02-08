@@ -1,3 +1,4 @@
+use super::common::DeclarationCounter;
 use crate::syntax;
 use thiserror::Error;
 
@@ -8,7 +9,6 @@ pub enum SemanticDiagnostic {
 }
 
 type Set<T> = std::collections::HashSet<T>;
-type Map<K, V> = std::collections::HashMap<K, V>;
 
 fn get_prelude_symbols() -> Set<String> {
     ["print", "println"]
@@ -17,46 +17,11 @@ fn get_prelude_symbols() -> Set<String> {
         .collect()
 }
 
-#[derive(Default)]
-pub struct DeclarationCounter {
-    counter: Map<String, u32>,
-}
-
-impl DeclarationCounter {
-    pub fn add(&mut self, name: &str) {
-        self.counter
-            .entry(name.to_owned())
-            .and_modify(|count| *count += 1)
-            .or_insert(1);
-    }
-
-
-    pub fn subtract(&mut self, name: &str) {
-        let value = self
-            .counter
-            .get_mut(name)
-            .expect("Tried to remove undeclared identifier");
-
-        if *value == 1 {
-            self.counter.remove(name);
-        } else {
-            *value -= 1;
-        }
-    }
-
-    pub fn contains(&self, name: &str) -> bool {
-        self.counter.contains_key(name)
-    }
-}
-
-
 struct SymbolDefinitionCheckState {
     global_symbols: Set<String>,
     declarations: DeclarationCounter,
     diagnostics: Vec<SemanticDiagnostic>,
 }
-
-
 
 impl SymbolDefinitionCheckState {
     fn init() -> SymbolDefinitionCheckState {
