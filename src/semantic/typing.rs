@@ -1,10 +1,15 @@
-use std::fmt::{Debug, Display};
+use std::{
+    collections::HashSet,
+    fmt::{Debug, Display},
+};
 
 use thiserror::Error;
 
 use crate::syntax;
 
-#[derive(Debug, PartialEq)]
+use super::common::DeclarationCounter;
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Type {
     Int,
     Bool,
@@ -18,8 +23,6 @@ impl Display for Type {
         Debug::fmt(self, f)
     }
 }
-
-type Map<K, V> = std::collections::HashMap<K, V>;
 
 #[derive(Debug, Error)]
 pub enum TypeDiagnostic {
@@ -44,10 +47,13 @@ pub enum TypeDiagnostic {
     // TODO: implement argument number and store function call, if possible
     #[error("The argument `{0}` should be of type `{0}` but is `{1}` instead")]
     MismatchedArgumentType(Type, Type),
+
+    #[error("The type specifier defines type `{0}` but has type `{1}` instead")]
+    MismatchedLetType(Type, Type),
 }
 
 pub struct TypeCheck {
-    _current_type_bindings: Map<String, Type>,
+    declarations: DeclarationCounter<Type>,
     diagnostics: Vec<TypeDiagnostic>,
 }
 
@@ -142,11 +148,67 @@ impl TypeCheck {
         Some(result)
     }
 
-    fn check_block_type(&mut self, _block: &syntax::Block) -> Option<Type> {
-        todo!()
+    fn check_block_type(&mut self, block: &syntax::Block) -> Option<Type> {
+        let mut last: Option<Type> = None;
+        let mut local_declarations = HashSet::new();
+
+        for statement in block.statements.iter() {
+            match statement {
+                syntax::Statement::Expression(expression) => {
+                    last = Some(self.check_expression_type(expression)?);
+                }
+
+                syntax::Statement::Let(declaration) => {
+                    let let_type = declaration
+                        .type_specifier
+                        .as_ref()
+                        .and_then(|it| self.check_type_from_name(it));
+                    let expression_type = self.check_expression_type(&declaration.value)?;
+
+                    if let Some(let_type) = let_type {
+                        if let_type != expression_type {
+                            self.diagnostics
+                                .push(TypeDiagnostic::MismatchedLetType(expression_type, let_type));
+
+                            return None;
+                        }
+                    }
+
+                    let name = &declaration.name.symbol;
+                    self.declarations.add_with(name, expression_type);
+                    local_declarations.insert(name);
+
+                    last = None;
+                }
+            }
+        }
+
+        for declaration in local_declarations {
+            self.declarations.subtract(declaration);
+        }
+
+        if let Some(last) = last {
+            Some(last)
+        } else {
+            Some(Type::Unit)
+        }
     }
 
-    fn check_identifier_type(&mut self, _identifier: &syntax::Identifier) -> Option<Type> {
-        todo!()
+    fn check_type_from_name(&mut self, source: &syntax::Type) -> Option<Type> {
+        match source.name.as_str() {
+            "Int" => Some(Type::Int),
+            "Bool" => Some(Type::Bool),
+            "String" => Some(Type::String),
+            "Unit" => Some(Type::Unit),
+            _ => None,
+        }
+    }
+
+    fn check_identifier_type(&mut self, identifier: &syntax::Identifier) -> Option<Type> {
+        if let Some(result) = self.declarations.get(&identifier.symbol) {
+            Some(result.clone())
+        } else {
+            panic!("Unknown identifier in type analysis: {}", identifier.symbol);
+        }
     }
 }
