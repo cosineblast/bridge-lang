@@ -179,13 +179,15 @@ fn handle_string_literal(string: &str) -> anyhow::Result<String> {
     Ok(result)
 }
 
-fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
+// This function is called parse_expr instead of parse_expression,
+// because it is an internal version of parse_expression, which already exists.
+fn parse_expr(source: Pair<Rule>) -> anyhow::Result<Expression> {
     let expression = match source.as_rule() {
         Rule::if_expression => {
             let mut source = source.into_inner();
 
             let if_expression = IfExpression {
-                condition: Box::new(parse_expression(source.next().unwrap())?),
+                condition: Box::new(parse_expr(source.next().unwrap())?),
                 then_branch: parse_block(source.next().unwrap().into_inner().next().unwrap())?,
                 else_branch: source
                     .next()
@@ -200,17 +202,17 @@ fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
             let literal = source.next().unwrap();
             match literal.as_rule() {
                 Rule::integer_literal => Expression::Literal(LiteralExpression::Integer(
-                    literal.as_str().parse().unwrap(),
-                )),
+                        literal.as_str().parse().unwrap(),
+                        )),
                 Rule::string_literal => Expression::Literal(LiteralExpression::String(
-                    handle_string_literal(literal.as_str())?,
-                )),
+                        handle_string_literal(literal.as_str())?,
+                        )),
                 _ => panic!("Unexpected rule: {:?}", literal.as_rule()),
             }
         }
         Rule::while_expression => {
             let mut source = source.into_inner();
-            let condition = Box::new(parse_expression(source.next().unwrap())?);
+            let condition = Box::new(parse_expr(source.next().unwrap())?);
             let body = parse_block(source.next().unwrap().into_inner().next().unwrap())?;
             Expression::While(WhileExpression { condition, body })
         }
@@ -222,7 +224,7 @@ fn parse_expression(source: Pair<Rule>) -> anyhow::Result<Expression> {
 
             if let Some(item) = stuff.next() {
                 for it in item.into_inner() {
-                    arguments.push(parse_expression(it)?);
+                    arguments.push(parse_expr(it)?);
                 }
             }
 
@@ -255,7 +257,7 @@ fn parse_let_statement(source: Pair<Rule>) -> anyhow::Result<LetStatement> {
         None
     };
 
-    let value = Box::new(parse_expression(stuff.next().unwrap())?);
+    let value = Box::new(parse_expr(stuff.next().unwrap())?);
 
     let result = LetStatement {
         name,
@@ -280,15 +282,15 @@ fn parse_block(source: Pair<Rule>) -> anyhow::Result<Block> {
             }
 
             Rule::block_statement => {
-                statements.push(Statement::Expression(parse_expression(
-                    node.into_inner().next().unwrap(),
-                )?));
+                statements.push(Statement::Expression(parse_expr(
+                            node.into_inner().next().unwrap(),
+                            )?));
             }
 
             Rule::expression_statement => {
-                statements.push(Statement::Expression(parse_expression(
-                    node.into_inner().next().unwrap(),
-                )?));
+                statements.push(Statement::Expression(parse_expr(
+                            node.into_inner().next().unwrap(),
+                            )?));
             }
 
             _ => panic!("Unexpected rule: {:?}", node.as_rule()),
@@ -315,7 +317,7 @@ fn parse_function_declaration(source: Pair<Rule>) -> anyhow::Result<FunctionDecl
             let type_value = Type::from(&children.next().unwrap());
             (identifier, type_value)
         })
-        .collect();
+    .collect();
 
     let return_type = stuff
         .next()
@@ -358,11 +360,27 @@ pub fn parse_module(source: &str) -> anyhow::Result<Module> {
     Ok(Module { span, declarations })
 }
 
+pub fn parse_expression(source: &str) -> anyhow::Result<Expression> {
+    let source = source.trim();
+
+    let content = PestParser::parse(Rule::expression_file, source)?
+        .next().unwrap().into_inner().next().unwrap();
+
+
+    parse_expr(content)
+}
+
 // TODO: add tests for span
 // right now, the insta tests don't show
 // the span, so they are currently untested
 // (e.g we can't know if the span really points to the right string
 //    just from the snapshot)
+//  alternatively, we can store the source span string in the AST.
+//  We could just store the &str, but this would make many things
+//  much more complicated, as the AST would need to store a reference to the source
+//  string itself, making it harder to serialize, deserialize, and move around.
+//
+//  Another option, would be to use some sort of java-like immutable strings.
 #[cfg(test)]
 mod test {
 
@@ -423,5 +441,31 @@ effect fn foo(x: i32, y: u32) -> u32 {
         insta::assert_yaml_snapshot!(module, {
             ".**.span" => "[span]"
         });
+
+    }
+
+    #[test]
+    fn parses_expressions() {
+        let source = r#"  { let x = 1; if (x) { 10 } { foo() } }  "#;
+
+        let result = parse_expression(source).unwrap();
+
+        insta::assert_yaml_snapshot!(result, {
+            ".**.span" => "[span]"
+        });
+    }
+
+
+    #[test]
+    fn rejects_leading_characters() {
+        let expression_source = r#"{ let x = 1; if (x) { 10 } { foo() } } jaaj"#;
+        let expression = parse_expression(expression_source);
+
+        assert!(expression.is_err());
+
+        let module_source = r#"fn foo() { 10 } bar"#;
+
+        let module = parse_expression(module_source);
+        assert!(module.is_err());
     }
 }

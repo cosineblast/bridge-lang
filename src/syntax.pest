@@ -1,6 +1,7 @@
 
 // overall structure
 
+expression_file = { SOI ~ expression ~ EOI }
 module_file = { SOI ~ module ~ EOI }
 
 module = { top_level_declaration* }
