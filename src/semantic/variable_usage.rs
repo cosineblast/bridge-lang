@@ -121,7 +121,7 @@ impl SymbolDefinitionCheckState {
     }
 }
 
-pub fn analyze_variable_usage(module: &syntax::Module) -> Vec<SemanticDiagnostic> {
+pub fn analyze_module_variable_usage(module: &syntax::Module) -> Vec<SemanticDiagnostic> {
     let mut state = SymbolDefinitionCheckState::init();
 
     state.add_module_identifiers(module);
@@ -133,6 +133,14 @@ pub fn analyze_variable_usage(module: &syntax::Module) -> Vec<SemanticDiagnostic
             }
         }
     }
+
+    state.diagnostics
+}
+
+pub fn analyze_expression_variable_usage(expression: &syntax::Expression) -> Vec<SemanticDiagnostic> {
+    let mut state = SymbolDefinitionCheckState::init();
+
+    state.check_expression(expression);
 
     state.diagnostics
 }
@@ -155,7 +163,7 @@ mod test {
 
         let module = syntax::parse_module(src).unwrap();
 
-        let result = analyze_variable_usage(&module);
+        let result = analyze_module_variable_usage(&module);
 
         assert_eq!(
             result,
@@ -182,7 +190,7 @@ mod test {
 
         let module = syntax::parse_module(src).unwrap();
 
-        let result = analyze_variable_usage(&module);
+        let result = analyze_module_variable_usage(&module);
 
         assert_eq!(result, vec![]);
     }
@@ -200,7 +208,7 @@ mod test {
 
         let module = syntax::parse_module(src).unwrap();
 
-        let result = analyze_variable_usage(&module);
+        let result = analyze_module_variable_usage(&module);
 
         assert_eq!(result, vec![]);
     }
@@ -221,7 +229,7 @@ mod test {
 
         let module = syntax::parse_module(src).unwrap();
 
-        let result = analyze_variable_usage(&module);
+        let result = analyze_module_variable_usage(&module);
 
         assert_eq!(
             result,
@@ -249,11 +257,25 @@ mod test {
 
         let module = syntax::parse_module(src).unwrap();
 
-        let result = analyze_variable_usage(&module);
+        let result = analyze_module_variable_usage(&module);
 
         assert_eq!(
             result,
             vec![SemanticDiagnostic::UnknownIdentifier("jooj".to_string()),]
+        );
+    }
+
+    #[test]
+    fn test_expression_works() {
+        let src = r#"{ let x = 10; println(x); y }"#;
+
+        let expression = syntax::parse_expression(src).unwrap();
+
+        let result = analyze_expression_variable_usage(&expression);
+
+        assert_eq!(
+            result,
+            vec![SemanticDiagnostic::UnknownIdentifier("y".to_string()),]
         );
     }
 }
