@@ -202,11 +202,11 @@ fn parse_expr(source: Pair<Rule>) -> anyhow::Result<Expression> {
             let literal = source.next().unwrap();
             match literal.as_rule() {
                 Rule::integer_literal => Expression::Literal(LiteralExpression::Integer(
-                        literal.as_str().parse().unwrap(),
-                        )),
+                    literal.as_str().parse().unwrap(),
+                )),
                 Rule::string_literal => Expression::Literal(LiteralExpression::String(
-                        handle_string_literal(literal.as_str())?,
-                        )),
+                    handle_string_literal(literal.as_str())?,
+                )),
                 _ => panic!("Unexpected rule: {:?}", literal.as_rule()),
             }
         }
@@ -283,14 +283,14 @@ fn parse_block(source: Pair<Rule>) -> anyhow::Result<Block> {
 
             Rule::block_statement => {
                 statements.push(Statement::Expression(parse_expr(
-                            node.into_inner().next().unwrap(),
-                            )?));
+                    node.into_inner().next().unwrap(),
+                )?));
             }
 
             Rule::expression_statement => {
                 statements.push(Statement::Expression(parse_expr(
-                            node.into_inner().next().unwrap(),
-                            )?));
+                    node.into_inner().next().unwrap(),
+                )?));
             }
 
             _ => panic!("Unexpected rule: {:?}", node.as_rule()),
@@ -317,7 +317,7 @@ fn parse_function_declaration(source: Pair<Rule>) -> anyhow::Result<FunctionDecl
             let type_value = Type::from(&children.next().unwrap());
             (identifier, type_value)
         })
-    .collect();
+        .collect();
 
     let return_type = stuff
         .next()
@@ -364,8 +364,11 @@ pub fn parse_expression(source: &str) -> anyhow::Result<Expression> {
     let source = source.trim();
 
     let content = PestParser::parse(Rule::expression_file, source)?
-        .next().unwrap().into_inner().next().unwrap();
-
+        .next()
+        .unwrap()
+        .into_inner()
+        .next()
+        .unwrap();
 
     parse_expr(content)
 }
@@ -441,7 +444,6 @@ effect fn foo(x: i32, y: u32) -> u32 {
         insta::assert_yaml_snapshot!(module, {
             ".**.span" => "[span]"
         });
-
     }
 
     #[test]
@@ -454,7 +456,6 @@ effect fn foo(x: i32, y: u32) -> u32 {
             ".**.span" => "[span]"
         });
     }
-
 
     #[test]
     fn rejects_leading_characters() {

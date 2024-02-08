@@ -137,7 +137,9 @@ pub fn analyze_module_variable_usage(module: &syntax::Module) -> Vec<SemanticDia
     state.diagnostics
 }
 
-pub fn analyze_expression_variable_usage(expression: &syntax::Expression) -> Vec<SemanticDiagnostic> {
+pub fn analyze_expression_variable_usage(
+    expression: &syntax::Expression,
+) -> Vec<SemanticDiagnostic> {
     let mut state = SymbolDefinitionCheckState::init();
 
     state.check_expression(expression);
