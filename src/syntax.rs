@@ -466,6 +466,16 @@ mod test {
 
     use super::*;
 
+    macro_rules! assert_ast_snapshot {
+        ($ast:expr) => {
+
+            insta::assert_yaml_snapshot!($ast, {
+                ".**.span" => "[span]",
+                ".**.id" => "[id]"
+            });
+        };
+    }
+
     #[test]
     fn parses_simple_function() {
         let source = r#"
@@ -498,10 +508,7 @@ mod test {
 
         let module = parse_module(source).unwrap();
 
-        insta::assert_yaml_snapshot!(module, {
-            ".**.span" => "[span]",
-            ".**.id" => "[id]"
-        });
+        assert_ast_snapshot!(module);
     }
 
     #[test]
@@ -519,10 +526,7 @@ effect fn foo(x: i32, y: u32) -> u32 {
 
         let module = parse_module(source).unwrap();
 
-        insta::assert_yaml_snapshot!(module, {
-            ".**.span" => "[span]",
-            ".**.id" => "[id]"
-        });
+        assert_ast_snapshot!(module);
     }
 
     #[test]
@@ -531,10 +535,7 @@ effect fn foo(x: i32, y: u32) -> u32 {
 
         let result = parse_expression(source).unwrap();
 
-        insta::assert_yaml_snapshot!(result, {
-            ".**.span" => "[span]",
-            ".**.id" => "[id]"
-        });
+        assert_ast_snapshot!(result);
     }
 
     #[test]
