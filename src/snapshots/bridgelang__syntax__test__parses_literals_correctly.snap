@@ -2,30 +2,46 @@
 source: src/syntax.rs
 expression: module
 ---
+id: "[id]"
 span: "[span]"
 declarations:
   - Function:
+      id: "[id]"
       span: "[span]"
       name:
+        id: "[id]"
         span: "[span]"
         symbol: main
       parameters: []
       return_type: ~
       body:
+        id: "[id]"
         span: "[span]"
         statements:
           - Expression:
               Literal:
-                Integer: 10
+                id: "[id]"
+                span: "[span]"
+                literal:
+                  Integer: 10
           - Expression:
               Literal:
-                String: cool
+                id: "[id]"
+                span: "[span]"
+                literal:
+                  String: cool
           - Expression:
               FunctionCall:
+                id: "[id]"
+                span: "[span]"
                 name:
+                  id: "[id]"
                   span: "[span]"
                   symbol: print
                 arguments:
                   - Literal:
-                      String: "\"∑\ti = 0 to \\ n of i is n(n+1)/2\n\""
+                      id: "[id]"
+                      span: "[span]"
+                      literal:
+                        String: "\"∑\ti = 0 to \\ n of i is n(n+1)/2\n\""
 

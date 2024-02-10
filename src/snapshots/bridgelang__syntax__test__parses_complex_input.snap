@@ -2,70 +2,108 @@
 source: src/syntax.rs
 expression: module
 ---
+id: "[id]"
 span: "[span]"
 declarations:
   - Function:
+      id: "[id]"
       span: "[span]"
       name:
+        id: "[id]"
         span: "[span]"
         symbol: foo
       parameters:
-        - - span: "[span]"
+        - - id: "[id]"
+            span: "[span]"
             symbol: x
-          - span: "[span]"
+          - id: "[id]"
+            span: "[span]"
             name: i32
-        - - span: "[span]"
+        - - id: "[id]"
+            span: "[span]"
             symbol: y
-          - span: "[span]"
+          - id: "[id]"
+            span: "[span]"
             name: u32
       return_type:
+        id: "[id]"
         span: "[span]"
         name: u32
       body:
+        id: "[id]"
         span: "[span]"
         statements:
           - Let:
+              id: "[id]"
+              span: "[span]"
               name:
+                id: "[id]"
                 span: "[span]"
                 symbol: x
               type_specifier:
+                id: "[id]"
                 span: "[span]"
                 name: i32
               value:
                 Literal:
-                  Integer: 10
+                  id: "[id]"
+                  span: "[span]"
+                  literal:
+                    Integer: 10
           - Let:
+              id: "[id]"
+              span: "[span]"
               name:
+                id: "[id]"
                 span: "[span]"
                 symbol: y
               type_specifier: ~
               value:
                 Literal:
-                  Integer: 20
+                  id: "[id]"
+                  span: "[span]"
+                  literal:
+                    Integer: 20
           - Expression:
               If:
+                id: "[id]"
+                span: "[span]"
                 condition:
                   Identifier:
+                    id: "[id]"
                     span: "[span]"
                     symbol: food
                 then_branch:
+                  id: "[id]"
                   span: "[span]"
                   statements:
                     - Expression:
                         Literal:
-                          Integer: 30
+                          id: "[id]"
+                          span: "[span]"
+                          literal:
+                            Integer: 30
                 else_branch: ~
           - Expression:
               FunctionCall:
+                id: "[id]"
+                span: "[span]"
                 name:
+                  id: "[id]"
                   span: "[span]"
                   symbol: ls
                 arguments:
                   - Literal:
-                      Integer: 1
+                      id: "[id]"
+                      span: "[span]"
+                      literal:
+                        Integer: 1
           - Expression:
               FunctionCall:
+                id: "[id]"
+                span: "[span]"
                 name:
+                  id: "[id]"
                   span: "[span]"
                   symbol: bye
                 arguments: []

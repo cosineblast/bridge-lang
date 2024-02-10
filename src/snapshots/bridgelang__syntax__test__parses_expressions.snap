@@ -3,36 +3,54 @@ source: src/syntax.rs
 expression: result
 ---
 Block:
+  id: "[id]"
   span: "[span]"
   statements:
     - Let:
+        id: "[id]"
+        span: "[span]"
         name:
+          id: "[id]"
           span: "[span]"
           symbol: x
         type_specifier: ~
         value:
           Literal:
-            Integer: 1
+            id: "[id]"
+            span: "[span]"
+            literal:
+              Integer: 1
     - Expression:
         If:
+          id: "[id]"
+          span: "[span]"
           condition:
             Identifier:
+              id: "[id]"
               span: "[span]"
               symbol: x
           then_branch:
+            id: "[id]"
             span: "[span]"
             statements:
               - Expression:
                   Literal:
-                    Integer: 10
+                    id: "[id]"
+                    span: "[span]"
+                    literal:
+                      Integer: 10
           else_branch: ~
     - Expression:
         Block:
+          id: "[id]"
           span: "[span]"
           statements:
             - Expression:
                 FunctionCall:
+                  id: "[id]"
+                  span: "[span]"
                   name:
+                    id: "[id]"
                     span: "[span]"
                     symbol: foo
                   arguments: []

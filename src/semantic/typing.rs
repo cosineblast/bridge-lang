@@ -129,11 +129,18 @@ impl TypeCheck {
     }
 
     pub fn check_expression_type(&mut self, expression: &syntax::Expression) -> Option<Type> {
+        use syntax as s;
         let result = match expression {
-            syntax::Expression::If(expression) => self.check_if_type(expression)?,
-            syntax::Expression::Literal(literal) => match literal {
-                syntax::LiteralExpression::Integer(_) => Type::Int,
-                syntax::LiteralExpression::String(_) => Type::String,
+            s::Expression::If(expression) => self.check_if_type(expression)?,
+            s::Expression::Literal(literal) => match literal {
+                s::LiteralExpression {
+                    literal: s::Literal::Integer(_),
+                    ..
+                } => Type::Int,
+                s::LiteralExpression {
+                    literal: s::Literal::String(_),
+                    ..
+                } => Type::String,
             },
             syntax::Expression::While(while_expression) => {
                 self.check_while_type(while_expression)?

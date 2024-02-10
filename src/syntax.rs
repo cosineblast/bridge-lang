@@ -13,8 +13,22 @@ pub struct IndexSpan {
     end: usize,
 }
 
+/// A unique ID for an AST node.
+/// At the current moment, we often
+/// need to store additional, complex, information in the AST.
+/// Such as the type of each expression, and such.
+/// One approach would be to make expressions generic, but right now,
+/// I feel it is just simplier to store these things in a separate table,
+/// and use the ID to reference them.
+///
+/// We should also probably have a Node-Header thing
+/// We could perhaps use a custom-derive macro.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct AstId(u64);
+
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Module {
+    pub id: AstId,
     pub span: IndexSpan,
     pub declarations: Vec<TopLevelDeclaration>,
 }
@@ -26,6 +40,7 @@ pub enum TopLevelDeclaration {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct FunctionDeclaration {
+    pub id: AstId,
     pub span: IndexSpan,
     pub name: Identifier,
     pub parameters: Vec<(Identifier, Type)>,
@@ -35,18 +50,21 @@ pub struct FunctionDeclaration {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Block {
+    pub id: AstId,
     pub span: IndexSpan,
     pub statements: Vec<Statement>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Identifier {
+    pub id: AstId,
     pub span: IndexSpan,
     pub symbol: String,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Type {
+    pub id: AstId,
     pub span: IndexSpan,
     pub name: String,
 }
@@ -59,6 +77,8 @@ pub enum Statement {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct LetStatement {
+    pub id: AstId,
+    pub span: IndexSpan,
     pub name: Identifier,
     pub type_specifier: Option<Type>,
     pub value: Box<Expression>,
@@ -76,19 +96,30 @@ pub enum Expression {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct IfExpression {
+    pub id: AstId,
+    pub span: IndexSpan,
     pub condition: Box<Expression>,
     pub then_branch: Block,
     pub else_branch: Option<Block>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub enum LiteralExpression {
+pub struct LiteralExpression {
+    pub id: AstId,
+    pub span: IndexSpan,
+    pub literal: Literal,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub enum Literal {
     Integer(i64),
     String(String),
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct WhileExpression {
+    pub id: AstId,
+    pub span: IndexSpan,
     pub condition: Box<Expression>,
     pub body: Block,
 }
@@ -101,8 +132,16 @@ pub struct IdentifierExpression(pub Identifier);
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct FunctionCallExpression {
+    pub id: AstId,
+    pub span: IndexSpan,
     pub name: Identifier,
     pub arguments: Vec<Expression>,
+}
+
+impl AstId {
+    fn new_random() -> Self {
+        AstId(rand::random())
+    }
 }
 
 impl From<&pest::Span<'_>> for IndexSpan {
@@ -117,6 +156,7 @@ impl From<&pest::Span<'_>> for IndexSpan {
 impl From<&Pair<'_, Rule>> for Identifier {
     fn from(pair: &Pair<'_, Rule>) -> Self {
         Identifier {
+            id: AstId::new_random(),
             span: IndexSpan::from(&pair.as_span()),
             symbol: pair.as_str().to_string(),
         }
@@ -127,6 +167,7 @@ impl From<&Pair<'_, Rule>> for Type {
     fn from(pair: &Pair<'_, Rule>) -> Self {
         let identifier = Identifier::from(pair);
         Type {
+            id: AstId::new_random(),
             span: identifier.span,
             name: identifier.symbol,
         }
@@ -184,9 +225,12 @@ fn handle_string_literal(string: &str) -> anyhow::Result<String> {
 fn parse_expr(source: Pair<Rule>) -> anyhow::Result<Expression> {
     let expression = match source.as_rule() {
         Rule::if_expression => {
+            let span = source.as_span();
             let mut source = source.into_inner();
 
             let if_expression = IfExpression {
+                id: AstId::new_random(),
+                span: IndexSpan::from(&span),
                 condition: Box::new(parse_expr(source.next().unwrap())?),
                 then_branch: parse_block(source.next().unwrap().into_inner().next().unwrap())?,
                 else_branch: source
@@ -201,22 +245,34 @@ fn parse_expr(source: Pair<Rule>) -> anyhow::Result<Expression> {
             let mut source = source.into_inner();
             let literal = source.next().unwrap();
             match literal.as_rule() {
-                Rule::integer_literal => Expression::Literal(LiteralExpression::Integer(
-                    literal.as_str().parse().unwrap(),
-                )),
-                Rule::string_literal => Expression::Literal(LiteralExpression::String(
-                    handle_string_literal(literal.as_str())?,
-                )),
+                Rule::integer_literal => Expression::Literal(LiteralExpression {
+                    id: AstId::new_random(),
+                    span: IndexSpan::from(&literal.as_span()),
+                    literal: Literal::Integer(literal.as_str().parse().unwrap()),
+                }),
+                Rule::string_literal => Expression::Literal(LiteralExpression {
+                    id: AstId::new_random(),
+                    span: IndexSpan::from(&literal.as_span()),
+                    literal: Literal::String(handle_string_literal(literal.as_str())?),
+                }),
                 _ => panic!("Unexpected rule: {:?}", literal.as_rule()),
             }
         }
         Rule::while_expression => {
+            let span = IndexSpan::from(&source.as_span());
             let mut source = source.into_inner();
+            let id = AstId::new_random();
             let condition = Box::new(parse_expr(source.next().unwrap())?);
             let body = parse_block(source.next().unwrap().into_inner().next().unwrap())?;
-            Expression::While(WhileExpression { condition, body })
+            Expression::While(WhileExpression {
+                id,
+                span,
+                condition,
+                body,
+            })
         }
         Rule::function_call => {
+            let span = IndexSpan::from(&source.as_span());
             let mut stuff = source.into_inner();
             let name = Identifier::from(&stuff.next().unwrap());
 
@@ -228,7 +284,12 @@ fn parse_expr(source: Pair<Rule>) -> anyhow::Result<Expression> {
                 }
             }
 
-            Expression::FunctionCall(FunctionCallExpression { name, arguments })
+            Expression::FunctionCall(FunctionCallExpression {
+                id: AstId::new_random(),
+                span,
+                name,
+                arguments,
+            })
         }
         Rule::block => Expression::Block(BlockExpression(parse_block(source)?)),
         Rule::identifier => Expression::Identifier(IdentifierExpression(Identifier::from(&source))),
@@ -241,6 +302,7 @@ fn parse_expr(source: Pair<Rule>) -> anyhow::Result<Expression> {
 fn parse_let_statement(source: Pair<Rule>) -> anyhow::Result<LetStatement> {
     assert_eq!(source.as_rule(), Rule::let_statement);
 
+    let span = IndexSpan::from(&source.as_span());
     let mut stuff = source.into_inner();
 
     let name = Identifier::from(&stuff.next().unwrap());
@@ -252,7 +314,11 @@ fn parse_let_statement(source: Pair<Rule>) -> anyhow::Result<LetStatement> {
         let pair = thing.into_inner().next().unwrap();
         let name = pair.as_str().to_string();
         let span = IndexSpan::from(&pair.as_span());
-        Some(Type { name, span })
+        Some(Type {
+            id: AstId::new_random(),
+            name,
+            span,
+        })
     } else {
         None
     };
@@ -260,6 +326,8 @@ fn parse_let_statement(source: Pair<Rule>) -> anyhow::Result<LetStatement> {
     let value = Box::new(parse_expr(stuff.next().unwrap())?);
 
     let result = LetStatement {
+        id: AstId::new_random(),
+        span,
         name,
         type_specifier,
         value,
@@ -297,7 +365,11 @@ fn parse_block(source: Pair<Rule>) -> anyhow::Result<Block> {
         }
     }
 
-    Ok(Block { span, statements })
+    Ok(Block {
+        id: AstId::new_random(),
+        span,
+        statements,
+    })
 }
 
 fn parse_function_declaration(source: Pair<Rule>) -> anyhow::Result<FunctionDeclaration> {
@@ -329,6 +401,7 @@ fn parse_function_declaration(source: Pair<Rule>) -> anyhow::Result<FunctionDecl
     let body = parse_block(stuff.next().unwrap().into_inner().next().unwrap())?;
 
     Ok(FunctionDeclaration {
+        id: AstId::new_random(),
         span,
         name,
         parameters,
@@ -357,7 +430,11 @@ pub fn parse_module(source: &str) -> anyhow::Result<Module> {
         declarations.push(TopLevelDeclaration::Function(function_declaration));
     }
 
-    Ok(Module { span, declarations })
+    Ok(Module {
+        id: AstId::new_random(),
+        span,
+        declarations,
+    })
 }
 
 pub fn parse_expression(source: &str) -> anyhow::Result<Expression> {
@@ -422,7 +499,8 @@ mod test {
         let module = parse_module(source).unwrap();
 
         insta::assert_yaml_snapshot!(module, {
-            ".**.span" => "[span]"
+            ".**.span" => "[span]",
+            ".**.id" => "[id]"
         });
     }
 
@@ -442,7 +520,8 @@ effect fn foo(x: i32, y: u32) -> u32 {
         let module = parse_module(source).unwrap();
 
         insta::assert_yaml_snapshot!(module, {
-            ".**.span" => "[span]"
+            ".**.span" => "[span]",
+            ".**.id" => "[id]"
         });
     }
 
@@ -453,7 +532,8 @@ effect fn foo(x: i32, y: u32) -> u32 {
         let result = parse_expression(source).unwrap();
 
         insta::assert_yaml_snapshot!(result, {
-            ".**.span" => "[span]"
+            ".**.span" => "[span]",
+            ".**.id" => "[id]"
         });
     }
 
