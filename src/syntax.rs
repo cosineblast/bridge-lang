@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use derive_more::TryInto;
 use pest::{iterators::Pair, Parser};
 use pest_derive::Parser;
 use serde::{Deserialize, Serialize};
@@ -23,7 +24,7 @@ pub struct IndexSpan {
 ///
 /// We should also probably have a Node-Header thing
 /// We could perhaps use a custom-derive macro.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Eq, Hash, Clone, Copy)]
 pub struct AstId(u64);
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -69,7 +70,8 @@ pub struct Type {
     pub name: String,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, TryInto)]
+#[try_into(owned, ref, ref_mut)]
 pub enum Statement {
     Let(LetStatement),
     Expression(Expression),
@@ -81,10 +83,13 @@ pub struct LetStatement {
     pub span: IndexSpan,
     pub name: Identifier,
     pub type_specifier: Option<Type>,
+
+    // TODO: rename to expression
     pub value: Box<Expression>,
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, TryInto)]
+#[try_into(owned, ref, ref_mut)]
 pub enum Expression {
     If(IfExpression),
     Literal(LiteralExpression),
@@ -141,6 +146,43 @@ pub struct FunctionCallExpression {
 impl AstId {
     fn new_random() -> Self {
         AstId(rand::random())
+    }
+}
+
+impl TryInto<Block> for Expression {
+    type Error = &'static str;
+
+    fn try_into(self) -> Result<Block, Self::Error> {
+        match self {
+            Expression::Block(BlockExpression(block)) => Ok(block),
+            _ => Err("Cannot convert this expression to a block"),
+        }
+    }
+}
+
+impl Expression {
+    pub fn as_block(&self) -> Option<&Block> {
+        match self {
+            Expression::Block(BlockExpression(block)) => Some(block),
+            _ => None,
+        }
+    }
+
+    pub fn id(&self) -> AstId {
+        // TODO: Refactor type (literally, like, matematically)
+        // We currently have (AstId * x1) + (AstId * x2) + (AstId * x3) + ...
+        // but this operation would be easier if we had
+        // AstId * (x1 + x2 + x3 + ...) instead.
+        // However, this would make it difficult to check
+        // the ID of a specialized expression
+        match self {
+            Expression::If(x) => x.id,
+            Expression::Literal(x) => x.id,
+            Expression::While(x) => x.id,
+            Expression::Block(x) => x.0.id,
+            Expression::FunctionCall(x) => x.id,
+            Expression::Identifier(x) => x.0.id,
+        }
     }
 }
 

@@ -12,6 +12,7 @@ anyhow = "1.0.79"
 serde = { version = "1.0.196", features = ["derive"] }
 thiserror = "1.0.56"
 rand = "0.8.5"
+derive_more = "0.99.17"
 
 [dev-dependencies]
 insta = { version = "1.34.0", features = ["yaml", "redactions"] }
