@@ -1,6 +1,13 @@
-#[derive(Default)]
 pub struct DeclarationCounter<T = ()> {
     counter: std::collections::HashMap<String, Vec<T>>,
+}
+
+impl<T> Default for DeclarationCounter<T> {
+    fn default() -> Self {
+        Self {
+            counter: std::collections::HashMap::new(),
+        }
+    }
 }
 
 impl<T> DeclarationCounter<T> {

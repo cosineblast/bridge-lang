@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt::{Debug, Display},
 };
 
@@ -54,11 +54,16 @@ pub enum TypeDiagnostic {
 
 pub struct TypeCheck {
     declarations: DeclarationCounter<Type>,
+    type_assignments: HashMap<syntax::AstId, Type>,
     diagnostics: Vec<TypeDiagnostic>,
 }
 
 impl TypeCheck {
-    fn check_if_type(&mut self, expression: &syntax::IfExpression) -> Option<Type> {
+    // in this implementation, we have two kinds of type checking functions,
+    // the check_*_raw ones and the check_* ones. their only difference, is that
+    // the check_* ones call their respective check_*_raw ones, and assign the result to the
+    // expression type map. One should not call the check_*_raw ones directly.
+    fn check_if_type_raw(&mut self, expression: &syntax::IfExpression) -> Option<Type> {
         let condition_type = self.check_expression_type(&expression.condition)?;
 
         if condition_type != Type::Bool {
@@ -81,7 +86,13 @@ impl TypeCheck {
         Some(Type::Unit)
     }
 
-    fn check_while_type(&mut self, while_expression: &syntax::WhileExpression) -> Option<Type> {
+    fn check_if_type(&mut self, expression: &syntax::IfExpression) -> Option<Type> {
+        let result = self.check_if_type_raw(expression)?;
+        self.type_assignments.insert(expression.id, result.clone());
+        Some(result)
+    }
+
+    fn check_while_type_raw(&mut self, while_expression: &syntax::WhileExpression) -> Option<Type> {
         let condition_type = self.check_expression_type(&while_expression.condition)?;
 
         if condition_type != Type::Bool {
@@ -92,7 +103,16 @@ impl TypeCheck {
         self.check_block_type(&while_expression.body)
     }
 
-    fn check_function_call_type(&mut self, call: &syntax::FunctionCallExpression) -> Option<Type> {
+    fn check_while_type(&mut self, expression: &syntax::WhileExpression) -> Option<Type> {
+        let result = self.check_while_type_raw(expression)?;
+        self.type_assignments.insert(expression.id, result.clone());
+        Some(result)
+    }
+
+    fn check_function_call_type_raw(
+        &mut self,
+        call: &syntax::FunctionCallExpression,
+    ) -> Option<Type> {
         let function_type = self.check_identifier_type(&call.name)?;
 
         match function_type {
@@ -128,7 +148,13 @@ impl TypeCheck {
         }
     }
 
-    pub fn check_expression_type(&mut self, expression: &syntax::Expression) -> Option<Type> {
+    fn check_function_call_type(&mut self, call: &syntax::FunctionCallExpression) -> Option<Type> {
+        let result = self.check_function_call_type_raw(call)?;
+        self.type_assignments.insert(call.id, result.clone());
+        Some(result)
+    }
+
+    pub fn check_expression_type_raw(&mut self, expression: &syntax::Expression) -> Option<Type> {
         use syntax as s;
         let result = match expression {
             s::Expression::If(expression) => self.check_if_type(expression)?,
@@ -155,7 +181,14 @@ impl TypeCheck {
         Some(result)
     }
 
-    fn check_block_type(&mut self, block: &syntax::Block) -> Option<Type> {
+    pub fn check_expression_type(&mut self, expression: &syntax::Expression) -> Option<Type> {
+        let result = self.check_expression_type_raw(expression)?;
+        self.type_assignments
+            .insert(expression.id(), result.clone());
+        Some(result)
+    }
+
+    fn check_block_type_raw(&mut self, block: &syntax::Block) -> Option<Type> {
         let mut last: Option<Type> = None;
         let mut local_declarations = HashSet::new();
 
@@ -201,6 +234,12 @@ impl TypeCheck {
         }
     }
 
+    fn check_block_type(&mut self, block: &syntax::Block) -> Option<Type> {
+        let result = self.check_block_type_raw(block)?;
+        self.type_assignments.insert(block.id, result.clone());
+        Some(result)
+    }
+
     fn check_type_from_name(&mut self, source: &syntax::Type) -> Option<Type> {
         match source.name.as_str() {
             "Int" => Some(Type::Int),
@@ -217,5 +256,63 @@ impl TypeCheck {
         } else {
             panic!("Unknown identifier in type analysis: {}", identifier.symbol);
         }
+    }
+}
+
+pub struct TypeCheckOutput {
+    pub type_assignments: HashMap<syntax::AstId, Type>,
+}
+
+pub fn perform_type_check(
+    expression: &syntax::Expression,
+) -> Result<TypeCheckOutput, Vec<TypeDiagnostic>> {
+    let mut type_check = TypeCheck {
+        type_assignments: HashMap::default(),
+        declarations: DeclarationCounter::default(),
+        diagnostics: Vec::new(),
+    };
+
+    let result = type_check.check_expression_type(expression);
+
+    if result.is_none() || !type_check.diagnostics.is_empty() {
+        Err(type_check.diagnostics)
+    } else {
+        Ok(TypeCheckOutput {
+            type_assignments: type_check.type_assignments,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::syntax;
+
+    #[test]
+    fn test_basic_typing() {
+        let expression =
+            syntax::parse_expression(r#"{ let x = "hi"; let y = 2; "bruh"; x; y}"#).unwrap();
+
+        let result = perform_type_check(&expression).unwrap();
+        let types = &result.type_assignments;
+
+        assert_eq!(types[&expression.id()], Type::Int);
+
+        let as_block: syntax::Block = expression.try_into().unwrap();
+        let first: &syntax::LetStatement = (&as_block.statements[0]).try_into().unwrap();
+        assert_eq!(types[&first.value.id()], Type::String);
+
+        let second: &syntax::LetStatement = (&as_block.statements[1]).try_into().unwrap();
+        assert_eq!(types[&second.value.id()], Type::Int);
+
+        let third: &syntax::Expression = (&as_block.statements[2]).try_into().unwrap();
+        assert_eq!(types[&third.id()], Type::String);
+
+        let fourth: &syntax::Expression = (&as_block.statements[3]).try_into().unwrap();
+        assert_eq!(types[&fourth.id()], Type::String);
+
+        let last: &syntax::Expression = (&as_block.statements[4]).try_into().unwrap();
+        assert_eq!(types[&last.id()], Type::Int);
     }
 }
