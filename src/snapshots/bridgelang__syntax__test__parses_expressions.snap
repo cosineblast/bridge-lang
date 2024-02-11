@@ -14,7 +14,7 @@ Block:
           span: "[span]"
           symbol: x
         type_specifier: ~
-        value:
+        expression:
           Literal:
             id: "[id]"
             span: "[span]"

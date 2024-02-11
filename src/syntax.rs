@@ -83,9 +83,7 @@ pub struct LetStatement {
     pub span: IndexSpan,
     pub name: Identifier,
     pub type_specifier: Option<Type>,
-
-    // TODO: rename to expression
-    pub value: Box<Expression>,
+    pub expression: Box<Expression>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, TryInto)]
@@ -372,7 +370,7 @@ fn parse_let_statement(source: Pair<Rule>) -> anyhow::Result<LetStatement> {
         span,
         name,
         type_specifier,
-        value,
+        expression: value,
     };
 
     Ok(result)

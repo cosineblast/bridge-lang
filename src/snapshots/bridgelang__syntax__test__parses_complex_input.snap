@@ -44,7 +44,7 @@ declarations:
                 id: "[id]"
                 span: "[span]"
                 name: i32
-              value:
+              expression:
                 Literal:
                   id: "[id]"
                   span: "[span]"
@@ -58,7 +58,7 @@ declarations:
                 span: "[span]"
                 symbol: y
               type_specifier: ~
-              value:
+              expression:
                 Literal:
                   id: "[id]"
                   span: "[span]"

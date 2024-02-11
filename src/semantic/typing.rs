@@ -203,7 +203,7 @@ impl TypeCheck {
                         .type_specifier
                         .as_ref()
                         .and_then(|it| self.check_type_from_name(it));
-                    let expression_type = self.check_expression_type(&declaration.value)?;
+                    let expression_type = self.check_expression_type(&declaration.expression)?;
 
                     if let Some(let_type) = let_type {
                         if let_type != expression_type {
@@ -301,10 +301,10 @@ mod tests {
 
         let as_block: syntax::Block = expression.try_into().unwrap();
         let first: &syntax::LetStatement = (&as_block.statements[0]).try_into().unwrap();
-        assert_eq!(types[&first.value.id()], Type::String);
+        assert_eq!(types[&first.expression.id()], Type::String);
 
         let second: &syntax::LetStatement = (&as_block.statements[1]).try_into().unwrap();
-        assert_eq!(types[&second.value.id()], Type::Int);
+        assert_eq!(types[&second.expression.id()], Type::Int);
 
         let third: &syntax::Expression = (&as_block.statements[2]).try_into().unwrap();
         assert_eq!(types[&third.id()], Type::String);

@@ -85,7 +85,7 @@ impl SymbolDefinitionCheckState {
                     self.check_expression(expression);
                 }
                 syntax::Statement::Let(declaration) => {
-                    self.check_expression(&declaration.value);
+                    self.check_expression(&declaration.expression);
 
                     if block_declarations.insert(declaration.name.symbol.clone()) {
                         self.declarations.add(&declaration.name.symbol);
