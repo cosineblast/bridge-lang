@@ -121,7 +121,9 @@ impl SymbolDefinitionCheckState {
     }
 }
 
-pub fn analyze_module_variable_usage(module: &syntax::Module) -> Vec<SemanticDiagnostic> {
+pub fn analyze_module_variable_usage(
+    module: &syntax::Module,
+) -> Result<(), Vec<SemanticDiagnostic>> {
     let mut state = SymbolDefinitionCheckState::init();
 
     state.add_module_identifiers(module);
@@ -134,17 +136,25 @@ pub fn analyze_module_variable_usage(module: &syntax::Module) -> Vec<SemanticDia
         }
     }
 
-    state.diagnostics
+    if state.diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(state.diagnostics)
+    }
 }
 
 pub fn analyze_expression_variable_usage(
     expression: &syntax::Expression,
-) -> Vec<SemanticDiagnostic> {
+) -> Result<(), Vec<SemanticDiagnostic>> {
     let mut state = SymbolDefinitionCheckState::init();
 
     state.check_expression(expression);
 
-    state.diagnostics
+    if state.diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(state.diagnostics)
+    }
 }
 
 #[cfg(test)]
@@ -169,11 +179,11 @@ mod test {
 
         assert_eq!(
             result,
-            vec![
+            Err(vec![
                 SemanticDiagnostic::UnknownIdentifier("y".to_string()),
                 SemanticDiagnostic::UnknownIdentifier("z".to_string()),
                 SemanticDiagnostic::UnknownIdentifier("jooj".to_string())
-            ]
+            ])
         );
     }
 
@@ -194,7 +204,7 @@ mod test {
 
         let result = analyze_module_variable_usage(&module);
 
-        assert_eq!(result, vec![]);
+        assert_eq!(result, Ok(()));
     }
 
     #[test]
@@ -212,7 +222,7 @@ mod test {
 
         let result = analyze_module_variable_usage(&module);
 
-        assert_eq!(result, vec![]);
+        assert_eq!(result, Ok(()));
     }
 
     #[test]
@@ -235,10 +245,10 @@ mod test {
 
         assert_eq!(
             result,
-            vec![
+            Err(vec![
                 SemanticDiagnostic::UnknownIdentifier("z".to_string()),
                 SemanticDiagnostic::UnknownIdentifier("z".to_string()),
-            ]
+            ])
         );
     }
 
@@ -263,7 +273,9 @@ mod test {
 
         assert_eq!(
             result,
-            vec![SemanticDiagnostic::UnknownIdentifier("jooj".to_string()),]
+            Err(vec![SemanticDiagnostic::UnknownIdentifier(
+                "jooj".to_string()
+            ),])
         );
     }
 
@@ -277,7 +289,7 @@ mod test {
 
         assert_eq!(
             result,
-            vec![SemanticDiagnostic::UnknownIdentifier("y".to_string()),]
+            Err(vec![SemanticDiagnostic::UnknownIdentifier("y".to_string()),])
         );
     }
 }
