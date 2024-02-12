@@ -1,6 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
-    fmt::{Debug, Display},
+    collections::{HashMap, HashSet}, fmt::{Debug, Display}
 };
 
 use thiserror::Error;
@@ -52,13 +51,16 @@ pub enum TypeDiagnostic {
     MismatchedLetType(Type, Type),
 }
 
-struct TypeCheck {
+struct TypeCheck<'preamble> {
     declarations: DeclarationCounter<Type>,
     type_assignments: HashMap<syntax::AstId, Type>,
     diagnostics: Vec<TypeDiagnostic>,
+    preamble: &'preamble TypingPreable
 }
 
-impl TypeCheck {
+pub type TypingPreable = HashMap<String, Type>;
+
+impl<'preamble> TypeCheck<'preamble> {
     // in this implementation, we have two kinds of type checking functions,
     // the check_*_raw ones and the check_* ones. their only difference, is that
     // the check_* ones call their respective check_*_raw ones, and assign the result to the
@@ -260,6 +262,8 @@ impl TypeCheck {
     fn check_identifier_type(&mut self, identifier: &syntax::Identifier) -> Option<Type> {
         if let Some(result) = self.declarations.get(&identifier.symbol) {
             Some(result.clone())
+        } else if let Some(result) = self.preamble.get(&identifier.symbol) {
+            Some(result.clone())
         } else {
             panic!("Unknown identifier in type analysis: {}", identifier.symbol);
         }
@@ -277,6 +281,30 @@ pub fn perform_type_check(
         type_assignments: HashMap::default(),
         declarations: DeclarationCounter::default(),
         diagnostics: Vec::new(),
+        preamble: &HashMap::default()
+    };
+
+    let result = type_check.check_expression_type(expression);
+
+    if result.is_none() || !type_check.diagnostics.is_empty() {
+        Err(type_check.diagnostics)
+    } else {
+        Ok(TypeCheckOutput {
+            type_assignments: type_check.type_assignments,
+        })
+    }
+}
+
+
+pub fn perform_type_check_with_preable(
+    expression: &syntax::Expression,
+    preamble: &TypingPreable
+) -> Result<TypeCheckOutput, Vec<TypeDiagnostic>> {
+    let mut type_check = TypeCheck {
+        type_assignments: HashMap::default(),
+        declarations: DeclarationCounter::default(),
+        diagnostics: Vec::new(),
+        preamble
     };
 
     let result = type_check.check_expression_type(expression);
@@ -294,7 +322,7 @@ pub fn perform_type_check(
 mod tests {
 
     use super::*;
-    use crate::syntax;
+    use crate::{semantic, syntax};
 
     #[test]
     fn test_basic_typing() {
@@ -321,5 +349,17 @@ mod tests {
 
         let last: &syntax::Expression = (&as_block.statements[4]).try_into().unwrap();
         assert_eq!(types[&last.id()], Type::Int);
+    }
+
+    #[test]
+    fn works_with_preable() -> anyhow::Result<()> {
+        let expression = syntax::parse_expression(r#"{ let x = 1; inc(x) }"#)?;
+
+        let result = perform_type_check_with_preable(&expression, &semantic::PRELUDE).unwrap();
+        let types = &result.type_assignments;
+
+        assert_eq!(types[&expression.id()], Type::Int);
+
+        Ok(())
     }
 }
