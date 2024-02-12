@@ -1,5 +1,6 @@
 use std::{
-    collections::{HashMap, HashSet}, fmt::{Debug, Display}
+    collections::{HashMap, HashSet},
+    fmt::{Debug, Display},
 };
 
 use thiserror::Error;
@@ -55,17 +56,13 @@ struct TypeCheck<'preamble> {
     declarations: DeclarationCounter<Type>,
     type_assignments: HashMap<syntax::AstId, Type>,
     diagnostics: Vec<TypeDiagnostic>,
-    preamble: &'preamble TypingPreable
+    preamble: &'preamble TypingPreable,
 }
 
 pub type TypingPreable = HashMap<String, Type>;
 
 impl<'preamble> TypeCheck<'preamble> {
-    // in this implementation, we have two kinds of type checking functions,
-    // the check_*_raw ones and the check_* ones. their only difference, is that
-    // the check_* ones call their respective check_*_raw ones, and assign the result to the
-    // expression type map. One should not call the check_*_raw ones directly.
-    fn check_if_type_raw(&mut self, expression: &syntax::IfExpression) -> Option<Type> {
+    fn check_if_type(&mut self, expression: &syntax::IfExpression) -> Option<Type> {
         let condition_type = self.check_expression_type(&expression.condition)?;
 
         if condition_type != Type::Bool {
@@ -85,19 +82,12 @@ impl<'preamble> TypeCheck<'preamble> {
             }
 
             Some(then_type)
-        }
-        else {
+        } else {
             Some(Type::Unit)
         }
     }
 
-    fn check_if_type(&mut self, expression: &syntax::IfExpression) -> Option<Type> {
-        let result = self.check_if_type_raw(expression)?;
-        self.type_assignments.insert(expression.id, result.clone());
-        Some(result)
-    }
-
-    fn check_while_type_raw(&mut self, while_expression: &syntax::WhileExpression) -> Option<Type> {
+    fn check_while_type(&mut self, while_expression: &syntax::WhileExpression) -> Option<Type> {
         let condition_type = self.check_expression_type(&while_expression.condition)?;
 
         if condition_type != Type::Bool {
@@ -108,16 +98,7 @@ impl<'preamble> TypeCheck<'preamble> {
         self.check_block_type(&while_expression.body)
     }
 
-    fn check_while_type(&mut self, expression: &syntax::WhileExpression) -> Option<Type> {
-        let result = self.check_while_type_raw(expression)?;
-        self.type_assignments.insert(expression.id, result.clone());
-        Some(result)
-    }
-
-    fn check_function_call_type_raw(
-        &mut self,
-        call: &syntax::FunctionCallExpression,
-    ) -> Option<Type> {
+    fn check_function_call_type(&mut self, call: &syntax::FunctionCallExpression) -> Option<Type> {
         let function_type = self.check_identifier_type(&call.name)?;
 
         match function_type {
@@ -153,12 +134,7 @@ impl<'preamble> TypeCheck<'preamble> {
         }
     }
 
-    fn check_function_call_type(&mut self, call: &syntax::FunctionCallExpression) -> Option<Type> {
-        let result = self.check_function_call_type_raw(call)?;
-        self.type_assignments.insert(call.id, result.clone());
-        Some(result)
-    }
-
+    // this is the implementation doesn't save the result to the table
     pub fn check_expression_type_raw(&mut self, expression: &syntax::Expression) -> Option<Type> {
         use syntax as s;
         let result = match expression {
@@ -175,7 +151,7 @@ impl<'preamble> TypeCheck<'preamble> {
                 s::LiteralExpression {
                     literal: s::Literal::Bool(_),
                     ..
-                } => Type::Bool
+                } => Type::Bool,
             },
             syntax::Expression::While(while_expression) => {
                 self.check_while_type(while_expression)?
@@ -197,7 +173,7 @@ impl<'preamble> TypeCheck<'preamble> {
         Some(result)
     }
 
-    fn check_block_type_raw(&mut self, block: &syntax::Block) -> Option<Type> {
+    fn check_block_type(&mut self, block: &syntax::Block) -> Option<Type> {
         let mut last: Option<Type> = None;
         let mut local_declarations = HashSet::new();
 
@@ -243,12 +219,6 @@ impl<'preamble> TypeCheck<'preamble> {
         }
     }
 
-    fn check_block_type(&mut self, block: &syntax::Block) -> Option<Type> {
-        let result = self.check_block_type_raw(block)?;
-        self.type_assignments.insert(block.id, result.clone());
-        Some(result)
-    }
-
     fn check_type_from_name(&mut self, source: &syntax::Type) -> Option<Type> {
         match source.name.as_str() {
             "Int" => Some(Type::Int),
@@ -281,7 +251,7 @@ pub fn perform_type_check(
         type_assignments: HashMap::default(),
         declarations: DeclarationCounter::default(),
         diagnostics: Vec::new(),
-        preamble: &HashMap::default()
+        preamble: &HashMap::default(),
     };
 
     let result = type_check.check_expression_type(expression);
@@ -295,16 +265,15 @@ pub fn perform_type_check(
     }
 }
 
-
 pub fn perform_type_check_with_preable(
     expression: &syntax::Expression,
-    preamble: &TypingPreable
+    preamble: &TypingPreable,
 ) -> Result<TypeCheckOutput, Vec<TypeDiagnostic>> {
     let mut type_check = TypeCheck {
         type_assignments: HashMap::default(),
         declarations: DeclarationCounter::default(),
         diagnostics: Vec::new(),
-        preamble
+        preamble,
     };
 
     let result = type_check.check_expression_type(expression);
