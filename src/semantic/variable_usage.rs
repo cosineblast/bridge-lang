@@ -282,7 +282,9 @@ mod test {
 
         assert_eq!(
             result,
-            Err(vec![VariableUsageDiagnostic::UnknownIdentifier("y".to_string()),])
+            Err(vec![VariableUsageDiagnostic::UnknownIdentifier(
+                "y".to_string()
+            ),])
         );
     }
 }

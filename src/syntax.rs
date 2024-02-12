@@ -1,4 +1,3 @@
-
 use anyhow::anyhow;
 use derive_more::TryInto;
 use pest::{iterators::Pair, Parser};
@@ -293,11 +292,11 @@ fn parse_expr(source: Pair<Rule>) -> anyhow::Result<Expression> {
                     let value = match pair.as_str() {
                         "true" => true,
                         "false" => false,
-                        _ => unreachable!()
+                        _ => unreachable!(),
                     };
 
                     Literal::Bool(value)
-                },
+                }
 
                 _ => panic!("Unexpected rule: {:?}", pair.as_rule()),
             };
