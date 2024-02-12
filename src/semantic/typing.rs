@@ -81,9 +81,12 @@ impl TypeCheck {
                     .push(TypeDiagnostic::InconsistentIfBranches(then_type, else_type));
                 return None;
             }
-        }
 
-        Some(Type::Unit)
+            Some(then_type)
+        }
+        else {
+            Some(Type::Unit)
+        }
     }
 
     fn check_if_type(&mut self, expression: &syntax::IfExpression) -> Option<Type> {
