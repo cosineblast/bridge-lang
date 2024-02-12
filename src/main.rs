@@ -6,8 +6,7 @@
 pub mod semantic;
 pub mod syntax;
 
-struct Repl {
-}
+struct Repl {}
 
 impl Repl {
     fn start() -> anyhow::Result<()> {
@@ -35,17 +34,18 @@ impl Repl {
                 continue;
             }
 
-            let type_output = match semantic::perform_type_check(&expression) {
-                Err(diagnostics) => {
-                    for diagnostic in diagnostics {
-                        eprintln!("{}", diagnostic);
+            let type_output =
+                match semantic::perform_type_check_with_preable(&expression, &semantic::PRELUDE) {
+                    Err(diagnostics) => {
+                        for diagnostic in diagnostics {
+                            eprintln!("{}", diagnostic);
+                        }
+
+                        continue;
                     }
 
-                    continue;
-                }
-
-                Ok(type_table) => type_table,
-            };
+                    Ok(type_table) => type_table,
+                };
 
             println!("it :: {}", type_output.type_assignments[&expression.id()]);
         }
@@ -53,7 +53,6 @@ impl Repl {
         Ok(())
     }
 }
-
 
 fn main() -> anyhow::Result<()> {
     Repl::start()
