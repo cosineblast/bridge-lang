@@ -19,6 +19,8 @@ impl Repl {
                 break;
             }
 
+            rl.add_history_entry(&line)?;
+
             let expression = match syntax::parse_expression(&line) {
                 Ok(expr) => expr,
                 Err(e) => {
