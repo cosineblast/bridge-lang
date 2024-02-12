@@ -1,3 +1,4 @@
+
 use anyhow::anyhow;
 use derive_more::TryInto;
 use pest::{iterators::Pair, Parser};
@@ -117,6 +118,7 @@ pub struct LiteralExpression {
 pub enum Literal {
     Integer(i64),
     String(String),
+    Bool(bool),
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -283,20 +285,28 @@ fn parse_expr(source: Pair<Rule>) -> anyhow::Result<Expression> {
         }
         Rule::literal => {
             let mut source = source.into_inner();
-            let literal = source.next().unwrap();
-            match literal.as_rule() {
-                Rule::integer_literal => Expression::Literal(LiteralExpression {
-                    id: AstId::new_random(),
-                    span: IndexSpan::from(&literal.as_span()),
-                    literal: Literal::Integer(literal.as_str().parse().unwrap()),
-                }),
-                Rule::string_literal => Expression::Literal(LiteralExpression {
-                    id: AstId::new_random(),
-                    span: IndexSpan::from(&literal.as_span()),
-                    literal: Literal::String(handle_string_literal(literal.as_str())?),
-                }),
-                _ => panic!("Unexpected rule: {:?}", literal.as_rule()),
-            }
+            let pair = source.next().unwrap();
+            let literal = match pair.as_rule() {
+                Rule::integer_literal => Literal::Integer(pair.as_str().parse().unwrap()),
+                Rule::string_literal => Literal::String(handle_string_literal(pair.as_str())?),
+                Rule::bool_literal => {
+                    let value = match pair.as_str() {
+                        "true" => true,
+                        "false" => false,
+                        _ => unreachable!()
+                    };
+
+                    Literal::Bool(value)
+                },
+
+                _ => panic!("Unexpected rule: {:?}", pair.as_rule()),
+            };
+
+            Expression::Literal(LiteralExpression {
+                id: AstId::new_random(),
+                span: IndexSpan::from(&pair.as_span()),
+                literal,
+            })
         }
         Rule::while_expression => {
             let span = IndexSpan::from(&source.as_span());

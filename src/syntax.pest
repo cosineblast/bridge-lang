@@ -91,7 +91,13 @@ operator_atom = _{ core_expression }
 
 // literals
 
-literal =  { integer_literal | string_literal }
+literal =  { integer_literal | string_literal | bool_literal }
+
+// numeric literals
+
+integer_literal = @{ "-"? ~ (!"0" ~ ASCII_DIGIT) ~ ASCII_DIGIT* }
+
+// string literals
 
 string_literal = @{ simple_literal }
 
@@ -106,9 +112,9 @@ literal_character = {
     | backslash ~ ("u" ~ ASCII_HEX_DIGIT{4})
 }
 
+// other literals
 
-
-integer_literal = @{ "-"? ~ (!"0" ~ ASCII_DIGIT) ~ ASCII_DIGIT* }
+bool_literal = @{ "true" | "false" }
 
 // types
 

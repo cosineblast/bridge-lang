@@ -52,7 +52,7 @@ pub enum TypeDiagnostic {
     MismatchedLetType(Type, Type),
 }
 
-pub struct TypeCheck {
+struct TypeCheck {
     declarations: DeclarationCounter<Type>,
     type_assignments: HashMap<syntax::AstId, Type>,
     diagnostics: Vec<TypeDiagnostic>,
@@ -167,6 +167,10 @@ impl TypeCheck {
                     literal: s::Literal::String(_),
                     ..
                 } => Type::String,
+                s::LiteralExpression {
+                    literal: s::Literal::Bool(_),
+                    ..
+                } => Type::Bool
             },
             syntax::Expression::While(while_expression) => {
                 self.check_while_type(while_expression)?
