@@ -30,6 +30,7 @@ dependencies = [
  "anyhow",
  "derive_more",
  "insta",
+ "lazy_static",
  "pest",
  "pest_derive",
  "rand",

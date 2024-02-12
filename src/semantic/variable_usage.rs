@@ -3,30 +3,23 @@ use crate::syntax;
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
-pub enum SemanticDiagnostic {
+pub enum VariableUsageDiagnostic {
     #[error("This identifier is unknown")]
     UnknownIdentifier(String),
 }
 
 type Set<T> = std::collections::HashSet<T>;
 
-fn get_prelude_symbols() -> Set<String> {
-    ["print", "println"]
-        .map(|it| it.to_string())
-        .into_iter()
-        .collect()
-}
-
 struct SymbolDefinitionCheckState {
     global_symbols: Set<String>,
     declarations: DeclarationCounter,
-    diagnostics: Vec<SemanticDiagnostic>,
+    diagnostics: Vec<VariableUsageDiagnostic>,
 }
 
 impl SymbolDefinitionCheckState {
     fn init() -> SymbolDefinitionCheckState {
         SymbolDefinitionCheckState {
-            global_symbols: get_prelude_symbols(),
+            global_symbols: super::PRELUDE.keys().cloned().collect(),
             declarations: DeclarationCounter::default(),
             diagnostics: vec![],
         }
@@ -72,7 +65,7 @@ impl SymbolDefinitionCheckState {
     fn check_identifier(&mut self, name: String) {
         if !self.declarations.contains(&name) && !self.global_symbols.contains(&name) {
             self.diagnostics
-                .push(SemanticDiagnostic::UnknownIdentifier(name));
+                .push(VariableUsageDiagnostic::UnknownIdentifier(name));
         }
     }
 
@@ -123,7 +116,7 @@ impl SymbolDefinitionCheckState {
 
 pub fn analyze_module_variable_usage(
     module: &syntax::Module,
-) -> Result<(), Vec<SemanticDiagnostic>> {
+) -> Result<(), Vec<VariableUsageDiagnostic>> {
     let mut state = SymbolDefinitionCheckState::init();
 
     state.add_module_identifiers(module);
@@ -145,7 +138,7 @@ pub fn analyze_module_variable_usage(
 
 pub fn analyze_expression_variable_usage(
     expression: &syntax::Expression,
-) -> Result<(), Vec<SemanticDiagnostic>> {
+) -> Result<(), Vec<VariableUsageDiagnostic>> {
     let mut state = SymbolDefinitionCheckState::init();
 
     state.check_expression(expression);
@@ -180,9 +173,9 @@ mod test {
         assert_eq!(
             result,
             Err(vec![
-                SemanticDiagnostic::UnknownIdentifier("y".to_string()),
-                SemanticDiagnostic::UnknownIdentifier("z".to_string()),
-                SemanticDiagnostic::UnknownIdentifier("jooj".to_string())
+                VariableUsageDiagnostic::UnknownIdentifier("y".to_string()),
+                VariableUsageDiagnostic::UnknownIdentifier("z".to_string()),
+                VariableUsageDiagnostic::UnknownIdentifier("jooj".to_string())
             ])
         );
     }
@@ -246,8 +239,8 @@ mod test {
         assert_eq!(
             result,
             Err(vec![
-                SemanticDiagnostic::UnknownIdentifier("z".to_string()),
-                SemanticDiagnostic::UnknownIdentifier("z".to_string()),
+                VariableUsageDiagnostic::UnknownIdentifier("z".to_string()),
+                VariableUsageDiagnostic::UnknownIdentifier("z".to_string()),
             ])
         );
     }
@@ -273,7 +266,7 @@ mod test {
 
         assert_eq!(
             result,
-            Err(vec![SemanticDiagnostic::UnknownIdentifier(
+            Err(vec![VariableUsageDiagnostic::UnknownIdentifier(
                 "jooj".to_string()
             ),])
         );
@@ -289,7 +282,7 @@ mod test {
 
         assert_eq!(
             result,
-            Err(vec![SemanticDiagnostic::UnknownIdentifier("y".to_string()),])
+            Err(vec![VariableUsageDiagnostic::UnknownIdentifier("y".to_string()),])
         );
     }
 }
