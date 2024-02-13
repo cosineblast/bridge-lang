@@ -1,11 +1,13 @@
 pub struct DeclarationCounter<T = ()> {
     counter: std::collections::HashMap<String, Vec<T>>,
+    blocks: Vec<Vec<String>>,
 }
 
 impl<T> Default for DeclarationCounter<T> {
     fn default() -> Self {
         Self {
             counter: std::collections::HashMap::new(),
+            blocks: vec![],
         }
     }
 }
@@ -17,16 +19,9 @@ impl<T> DeclarationCounter<T> {
         } else {
             self.counter.insert(name.to_owned(), vec![value]);
         }
-    }
 
-    pub fn subtract(&mut self, name: &str) {
-        let value = self
-            .counter
-            .get_mut(name)
-            .expect("Tried to remove undeclared identifier");
-
-        if value.pop().is_none() {
-            self.counter.remove(name);
+        if let Some(block) = self.blocks.last_mut() {
+            block.push(name.to_owned());
         }
     }
 
@@ -36,6 +31,29 @@ impl<T> DeclarationCounter<T> {
 
     pub fn contains(&self, name: &str) -> bool {
         self.counter.contains_key(name)
+    }
+
+    pub fn start_block(&mut self) {
+        self.blocks.push(vec![]);
+    }
+
+    pub fn end_block(&mut self) {
+        for name in self.blocks.pop().unwrap() {
+            self.subtract(&name);
+        }
+    }
+
+    fn subtract(&mut self, name: &str) {
+        let value = self
+            .counter
+            .get_mut(name)
+            .expect("Tried to remove undeclared identifier");
+
+        value.pop();
+
+        if value.is_empty() {
+            self.counter.remove(name);
+        }
     }
 }
 

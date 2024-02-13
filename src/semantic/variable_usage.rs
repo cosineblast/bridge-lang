@@ -70,7 +70,7 @@ impl SymbolDefinitionCheckState {
     }
 
     fn check_block(&mut self, block: &syntax::Block) {
-        let mut block_declarations = Set::default();
+        self.declarations.start_block();
 
         for statement in block.statements.iter() {
             match statement {
@@ -80,16 +80,12 @@ impl SymbolDefinitionCheckState {
                 syntax::Statement::Let(declaration) => {
                     self.check_expression(&declaration.expression);
 
-                    if block_declarations.insert(declaration.name.symbol.clone()) {
-                        self.declarations.add(&declaration.name.symbol);
-                    }
+                    self.declarations.add(&declaration.name.symbol);
                 }
             }
         }
 
-        for declaration in block_declarations.iter() {
-            self.declarations.subtract(declaration);
-        }
+        self.declarations.end_block();
     }
 
     fn check_function_declaration(&mut self, function_declaration: &syntax::FunctionDeclaration) {
@@ -284,6 +280,22 @@ mod test {
             result,
             Err(vec![VariableUsageDiagnostic::UnknownIdentifier(
                 "y".to_string()
+            ),])
+        );
+    }
+
+    #[test]
+    fn variables_dont_leak() {
+        let src = r#"{ { let x = 1; }; x }"#;
+
+        let expression = syntax::parse_expression(src).unwrap();
+
+        let result = analyze_expression_variable_usage(&expression);
+
+        assert_eq!(
+            result,
+            Err(vec![VariableUsageDiagnostic::UnknownIdentifier(
+                "x".to_string()
             ),])
         );
     }

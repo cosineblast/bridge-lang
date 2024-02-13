@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt::{Debug, Display},
 };
 
@@ -175,7 +175,8 @@ impl<'preamble> TypeCheck<'preamble> {
 
     fn check_block_type(&mut self, block: &syntax::Block) -> Option<Type> {
         let mut last: Option<Type> = None;
-        let mut local_declarations = HashSet::new();
+
+        self.declarations.start_block();
 
         for statement in block.statements.iter() {
             match statement {
@@ -201,16 +202,13 @@ impl<'preamble> TypeCheck<'preamble> {
 
                     let name = &declaration.name.symbol;
                     self.declarations.add_with(name, expression_type);
-                    local_declarations.insert(name);
 
                     last = None;
                 }
             }
         }
 
-        for declaration in local_declarations {
-            self.declarations.subtract(declaration);
-        }
+        self.declarations.end_block();
 
         if let Some(last) = last {
             Some(last)
