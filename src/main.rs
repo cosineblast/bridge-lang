@@ -5,11 +5,29 @@
 // this is just so the compiler stops complaining about unused functions.
 pub mod semantic;
 pub mod syntax;
+pub mod codegen;
 
-struct Repl {}
+struct Repl {
+    codegen: codegen::Codegen,
+}
 
 impl Repl {
+    fn new() -> anyhow::Result<Self> {
+        Ok(Self {
+            codegen: codegen::Codegen::new()?,
+        })
+    }
+
     fn start() -> anyhow::Result<()> {
+        let mut repl = Repl::new()?;
+
+        repl.run()?;
+
+        Ok(())
+    }
+
+    fn run(&mut self) -> anyhow::Result<()> {
+
         let mut rl = rustyline::DefaultEditor::new()?;
 
         loop {
@@ -50,6 +68,10 @@ impl Repl {
                 };
 
             println!("it :: {}", type_output.type_assignments[&expression.id()]);
+
+            let codegen_output = self.codegen.codegen_expression(&expression, type_output)?;
+
+            println!("{}", codegen_output);
         }
 
         Ok(())

@@ -19,6 +19,11 @@
               pkgs.rustfmt
               pkgs.clippy
               pkgs.cargo-insta
+
+              pkgs.llvmPackages_17.libllvm.dev
+
+              # apparently something needs this, idk why
+              pkgs.libxml2
             ];
           };
       });
