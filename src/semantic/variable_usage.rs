@@ -1,4 +1,4 @@
-use super::common::DeclarationCounter;
+use crate::common::DeclarationCounter;
 use crate::syntax;
 use thiserror::Error;
 

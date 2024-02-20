@@ -6,6 +6,7 @@
 pub mod semantic;
 pub mod syntax;
 pub mod codegen;
+pub mod common;
 
 struct Repl {
     codegen: codegen::Codegen,

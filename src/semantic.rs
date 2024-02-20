@@ -1,4 +1,3 @@
-mod common;
 mod typing;
 mod variable_usage;
 

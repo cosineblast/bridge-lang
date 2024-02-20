@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use crate::syntax;
 
-use super::common::DeclarationCounter;
+use crate::common::DeclarationCounter;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Type {
