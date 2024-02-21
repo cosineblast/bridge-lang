@@ -10,14 +10,14 @@ use llvm_sys as llvm;
 
 use crate::common::DeclarationCounter;
 
-use inkwell::context::AsContextRef;
+use inkwell::{context::AsContextRef, types::AsTypeRef, values::{AnyValue, AsValueRef}};
 
 pub struct Codegen {
-    llvm_module: inkwell::module::Module<'static>,
-    llvm_builder: inkwell::builder::Builder<'static>,
+    inkwell_module: inkwell::module::Module<'static>,
+    inkwell_builder: inkwell::builder::Builder<'static>,
 
     // it is VERY important that this is after llvm_module and llvm_builder
-    llvm_context: Pin<Box<inkwell::context::Context>>,
+    inkwell_context: Pin<Box<inkwell::context::Context>>,
 
     types: Option<TypeCheckOutput>,
     generated_count: u32,
@@ -26,8 +26,8 @@ pub struct Codegen {
 
 impl Codegen {
     pub fn new() -> anyhow::Result<Self> {
-        let llvm_context = inkwell::context::Context::create();
-        let llvm_context = Box::pin(llvm_context);
+        let inkwell_context = inkwell::context::Context::create();
+        let inkwell_context = Box::pin(inkwell_context);
 
         // SAFETY:
         // well, the LLVM context works like an allocator arena,
@@ -42,29 +42,33 @@ impl Codegen {
         // dropped.
         // This means that the unbounded lifetime created by this unsafe block
         // never refers to dangling stuff
-        let llvm_context_ref =
-            unsafe { &*(llvm_context.as_ref().get_ref() as *const inkwell::context::Context) };
+        let inkwell_context_ref =
+            unsafe { &*(inkwell_context.as_ref().get_ref() as *const inkwell::context::Context) };
 
         Ok(Self {
-            llvm_context,
-            llvm_module: llvm_context_ref.create_module("repl"),
-            llvm_builder: llvm_context_ref.create_builder(),
+            inkwell_context,
+            inkwell_module: inkwell_context_ref.create_module("repl"),
+            inkwell_builder: inkwell_context_ref.create_builder(),
             types: None,
             generated_count: 0,
             declarations: DeclarationCounter::default(),
         })
     }
 
+    fn llvm_context(&self) -> &inkwell::context::Context {
+        self.inkwell_context.as_ref().get_ref()
+    }
+
     fn llvm_context_raw(&mut self) -> *mut llvm::LLVMContext {
-        (&*self.llvm_context).as_ctx_ref()
+        (&*self.inkwell_context).as_ctx_ref()
     }
 
     fn llvm_module_raw(&mut self) -> *mut llvm::LLVMModule {
-        (&self.llvm_module).as_mut_ptr()
+        (&self.inkwell_module).as_mut_ptr()
     }
 
     fn llvm_builder_raw(&mut self) -> *mut llvm::LLVMBuilder {
-        (&self.llvm_builder).as_mut_ptr()
+        (&self.inkwell_builder).as_mut_ptr()
     }
 
     pub fn codegen_expression(
@@ -120,18 +124,13 @@ impl Codegen {
         self.types.as_ref().unwrap().type_assignments[&id].clone()
     }
 
+
     fn llvm_type_of(&mut self, ty: semantic::Type) -> *mut llvm::LLVMType {
         match ty {
-            semantic::Type::Int => unsafe {
-                llvm::core::LLVMInt64TypeInContext(self.llvm_context_raw())
-            },
-            semantic::Type::Bool => unsafe {
-                llvm::core::LLVMInt1TypeInContext(self.llvm_context_raw())
-            },
+            semantic::Type::Int => self.llvm_context().i64_type().as_type_ref(),
+            semantic::Type::Bool => self.llvm_context().bool_type().as_type_ref(),
             semantic::Type::String => todo!(),
-            semantic::Type::Unit => unsafe {
-                llvm::core::LLVMVoidTypeInContext(self.llvm_context_raw())
-            },
+            semantic::Type::Unit => self.llvm_context().void_type().as_type_ref(),
             semantic::Type::Function(_, _) => todo!(),
         }
     }
@@ -153,21 +152,25 @@ impl Codegen {
 
     fn gen_literal(&mut self, literal: &syntax::LiteralExpression) -> IRResult {
         match literal.literal {
-            syntax::Literal::Integer(i) => unsafe {
-                let int_type = llvm::core::LLVMInt64TypeInContext(self.llvm_context_raw());
-
-                let result = llvm::core::LLVMConstInt(int_type, i as u64, true as i32);
-
-                Ok(result)
-            },
-
-            syntax::Literal::Bool(b) => unsafe {
-                let int_type = llvm::core::LLVMInt1TypeInContext(self.llvm_context_raw());
-
-                let result = llvm::core::LLVMConstInt(int_type, b as u64, true as i32);
+            syntax::Literal::Integer(i) => {
+                let result = self
+                    .llvm_context()
+                    .i64_type()
+                    .const_int(i as u64, true)
+                    .as_value_ref();
 
                 Ok(result)
-            },
+            }
+
+            syntax::Literal::Bool(b) => {
+                let result = self
+                    .llvm_context()
+                    .bool_type()
+                    .const_int(b as u64, true)
+                    .as_value_ref();
+
+                Ok(result)
+            }
             _ => todo!(),
         }
     }
@@ -284,17 +287,13 @@ pub struct ExpressionOutput {
 
 impl Display for ExpressionOutput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        unsafe {
-            let ir_string = llvm::core::LLVMPrintValueToString(self.generated_ir);
-            let c_str = std::ffi::CStr::from_ptr(ir_string);
-            let string = c_str.to_str().unwrap();
+        let string = unsafe {
+            inkwell::values::GlobalValue::new(self.generated_ir)
+        }.print_to_string().to_string();
 
-            write!(f, "{}", string)?;
+        write!(f, "{}", string.to_string())?;
 
-            llvm::core::LLVMDisposeMessage(ir_string);
-
-            Ok(())
-        }
+        Ok(())
     }
 }
 
