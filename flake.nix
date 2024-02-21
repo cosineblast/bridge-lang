@@ -24,6 +24,7 @@
 
               # apparently something needs this, idk why
               pkgs.libxml2
+              pkgs.libffi
             ];
           };
       });

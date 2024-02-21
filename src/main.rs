@@ -3,10 +3,10 @@
 // in the main.rs file.
 
 // this is just so the compiler stops complaining about unused functions.
-pub mod semantic;
-pub mod syntax;
 pub mod codegen;
 pub mod common;
+pub mod semantic;
+pub mod syntax;
 
 struct Repl {
     codegen: codegen::Codegen,
@@ -28,7 +28,6 @@ impl Repl {
     }
 
     fn run(&mut self) -> anyhow::Result<()> {
-
         let mut rl = rustyline::DefaultEditor::new()?;
 
         loop {
