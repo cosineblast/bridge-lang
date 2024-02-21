@@ -1,5 +1,5 @@
 use crate::semantic;
-use std::{fmt::Display, ptr::null_mut};
+use std::fmt::Display;
 
 use crate::{semantic::TypeCheckOutput, syntax};
 use llvm::{core::{LLVMAddIncoming, LLVMBuildPhi}, LLVMValue};
@@ -7,11 +7,10 @@ use llvm_sys as llvm;
 
 use crate::common::DeclarationCounter;
 
-// We are going to avoid leaking llvm-sys stuff for now
 pub struct Codegen {
-    llvm_context: *mut llvm::LLVMContext,
-    llvm_module: *mut llvm::LLVMModule,
-    llvm_builder: *mut llvm::LLVMBuilder,
+    llvm_context_raw: *mut llvm::LLVMContext,
+    llvm_module_raw: *mut llvm::LLVMModule,
+    llvm_builder_raw: *mut llvm::LLVMBuilder,
     types: Option<TypeCheckOutput>,
     generated_count: u32,
     declarations: DeclarationCounter<*mut LLVMValue>,
@@ -20,22 +19,34 @@ pub struct Codegen {
 impl Codegen {
     pub fn new() -> anyhow::Result<Self> {
         unsafe {
-            let llvm_context = llvm::core::LLVMContextCreate();
-            let llvm_module = llvm::core::LLVMModuleCreateWithNameInContext(
+            let llvm_context_raw = llvm::core::LLVMContextCreate();
+            let llvm_module_raw = llvm::core::LLVMModuleCreateWithNameInContext(
                 b"repl\0".as_ptr() as *const i8,
-                llvm_context,
+                llvm_context_raw,
             );
-            let llvm_builder = llvm::core::LLVMCreateBuilderInContext(llvm_context);
+            let llvm_builder_raw = llvm::core::LLVMCreateBuilderInContext(llvm_context_raw);
 
             Ok(Self {
-                llvm_context,
-                llvm_module,
-                llvm_builder,
+                llvm_context_raw,
+                llvm_module_raw,
+                llvm_builder_raw,
                 types: None,
                 generated_count: 0,
                 declarations: DeclarationCounter::default(),
             })
         }
+    }
+
+    fn llvm_context(&mut self) -> *mut llvm::LLVMContext {
+        self.llvm_context_raw
+    }
+
+    fn llvm_module(&mut self) -> *mut llvm::LLVMModule {
+        self.llvm_module_raw
+    }
+
+    fn llvm_builder(&mut self) -> *mut llvm::LLVMBuilder {
+        self.llvm_builder_raw
     }
 
     pub fn codegen_expression(
@@ -54,7 +65,7 @@ impl Codegen {
             let function_name = format!("repl_{}\0", self.generated_count);
             self.generated_count += 1;
             llvm::core::LLVMAddFunction(
-                self.llvm_module,
+                self.llvm_module(),
                 function_name.as_ptr() as *const i8,
                 function_type,
             )
@@ -62,20 +73,20 @@ impl Codegen {
 
         let block: *mut llvm::LLVMBasicBlock = unsafe {
             llvm::core::LLVMAppendBasicBlockInContext(
-                self.llvm_context,
+                self.llvm_context(),
                 function,
                 b"entry\0".as_ptr() as *const i8,
             )
         };
 
         unsafe {
-            llvm::core::LLVMPositionBuilderAtEnd(self.llvm_builder, block);
+            llvm::core::LLVMPositionBuilderAtEnd(self.llvm_builder(), block);
         }
 
         let result_value = self.gen_expression(expression)?;
 
         unsafe {
-            llvm::core::LLVMBuildRet(self.llvm_builder, result_value);
+            llvm::core::LLVMBuildRet(self.llvm_builder(), result_value);
             llvm::analysis::LLVMVerifyFunction(
                 function,
                 llvm::analysis::LLVMVerifierFailureAction::LLVMAbortProcessAction,
@@ -93,10 +104,10 @@ impl Codegen {
 
     fn llvm_type_of(&mut self, ty: semantic::Type) -> *mut llvm::LLVMType {
         match ty {
-            semantic::Type::Int => unsafe { llvm::core::LLVMInt64TypeInContext(self.llvm_context) },
-            semantic::Type::Bool => unsafe { llvm::core::LLVMInt1TypeInContext(self.llvm_context) },
+            semantic::Type::Int => unsafe { llvm::core::LLVMInt64TypeInContext(self.llvm_context()) },
+            semantic::Type::Bool => unsafe { llvm::core::LLVMInt1TypeInContext(self.llvm_context()) },
             semantic::Type::String => todo!(),
-            semantic::Type::Unit => unsafe { llvm::core::LLVMVoidTypeInContext(self.llvm_context) },
+            semantic::Type::Unit => unsafe { llvm::core::LLVMVoidTypeInContext(self.llvm_context()) },
             semantic::Type::Function(_, _) => todo!(),
         }
     }
@@ -119,7 +130,7 @@ impl Codegen {
     fn gen_literal(&mut self, literal: &syntax::LiteralExpression) -> IRResult {
         match literal.literal {
             syntax::Literal::Integer(i) => unsafe {
-                let int_type = llvm::core::LLVMInt64TypeInContext(self.llvm_context);
+                let int_type = llvm::core::LLVMInt64TypeInContext(self.llvm_context());
 
                 let result = llvm::core::LLVMConstInt(int_type, i as u64, true as i32);
 
@@ -127,7 +138,7 @@ impl Codegen {
             },
 
             syntax::Literal::Bool(b) => unsafe {
-                let int_type = llvm::core::LLVMInt1TypeInContext(self.llvm_context);
+                let int_type = llvm::core::LLVMInt1TypeInContext(self.llvm_context());
 
                 let result = llvm::core::LLVMConstInt(int_type, b as u64, true as i32);
 
@@ -172,53 +183,53 @@ impl Codegen {
             let condition_value = self.gen_expression(&expression.condition)?;
 
             let current_function = llvm::core::LLVMGetBasicBlockParent(
-                llvm::core::LLVMGetInsertBlock(self.llvm_builder),
+                llvm::core::LLVMGetInsertBlock(self.llvm_builder()),
             );
 
             let then_block = llvm::core::LLVMAppendBasicBlockInContext(
-                self.llvm_context,
+                self.llvm_context(),
                 current_function,
                 b"then\0".as_ptr() as *const i8,
             );
 
             let else_block = llvm::core::LLVMAppendBasicBlockInContext(
-                self.llvm_context,
+                self.llvm_context(),
                 current_function,
                 b"else\0".as_ptr() as *const i8,
             );
 
             let end_block = llvm::core::LLVMAppendBasicBlockInContext(
-                self.llvm_context,
+                self.llvm_context(),
                 current_function,
                 b"end\0".as_ptr() as *const i8,
             );
 
-            llvm::core::LLVMBuildCondBr(self.llvm_builder, condition_value, then_block, else_block);
+            llvm::core::LLVMBuildCondBr(self.llvm_builder(), condition_value, then_block, else_block);
 
             // build then branch
-            llvm::core::LLVMPositionBuilderAtEnd(self.llvm_builder, then_block);
+            llvm::core::LLVMPositionBuilderAtEnd(self.llvm_builder(), then_block);
             let then_value = self.gen_block(&expression.then_branch)?;
-            llvm::core::LLVMBuildBr(self.llvm_builder, end_block);
+            llvm::core::LLVMBuildBr(self.llvm_builder(), end_block);
 
             // we reset the then_block because phi thingies
             // TODO: study this
-            let then_block = llvm::core::LLVMGetInsertBlock(self.llvm_builder);
+            let then_block = llvm::core::LLVMGetInsertBlock(self.llvm_builder());
 
             // build else branch
 
-            llvm::core::LLVMPositionBuilderAtEnd(self.llvm_builder, else_block);
+            llvm::core::LLVMPositionBuilderAtEnd(self.llvm_builder(), else_block);
 
 
             let else_value = self.gen_block(expression.else_branch.as_ref().expect("else not implemented"))?;
-            llvm::core::LLVMBuildBr(self.llvm_builder, end_block);
+            llvm::core::LLVMBuildBr(self.llvm_builder(), end_block);
 
-            let else_block = llvm::core::LLVMGetInsertBlock(self.llvm_builder);
+            let else_block = llvm::core::LLVMGetInsertBlock(self.llvm_builder());
 
             // end block
 
-            llvm::core::LLVMPositionBuilderAtEnd(self.llvm_builder, end_block);
+            llvm::core::LLVMPositionBuilderAtEnd(self.llvm_builder(), end_block);
 
-            let phi = LLVMBuildPhi(self.llvm_builder,
+            let phi = LLVMBuildPhi(self.llvm_builder(),
                                    self.llvm_type_of(self.type_of(expression.id)),
                                    b"bruh\0".as_ptr() as *const i8
                                    );
@@ -256,9 +267,9 @@ impl Display for ExpressionOutput {
 impl Drop for Codegen {
     fn drop(&mut self) {
         unsafe {
-            llvm::core::LLVMDisposeBuilder(self.llvm_builder);
-            llvm::core::LLVMDisposeModule(self.llvm_module);
-            llvm::core::LLVMContextDispose(self.llvm_context);
+            llvm::core::LLVMDisposeBuilder(self.llvm_builder());
+            llvm::core::LLVMDisposeModule(self.llvm_module());
+            llvm::core::LLVMContextDispose(self.llvm_context());
         }
     }
 }
