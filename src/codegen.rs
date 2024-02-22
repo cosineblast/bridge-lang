@@ -12,75 +12,30 @@ use crate::common::DeclarationCounter;
 
 use inkwell::{
     context::AsContextRef,
-    types::AsTypeRef,
-    values::{AnyValue, AsValueRef},
+    types::{AsTypeRef, BasicType, BasicTypeEnum},
+    values::{AnyValue, AsValueRef, GlobalValue},
 };
 
 pub struct Codegen {
-    inkwell_module: inkwell::module::Module<'static>,
-    inkwell_builder: inkwell::builder::Builder<'static>,
-
-    // it is VERY important that this is after llvm_module and llvm_builder
-    inkwell_context: Pin<Box<inkwell::context::Context>>,
-
-    types: Option<TypeCheckOutput>,
-    generated_count: u32,
-    declarations: DeclarationCounter<*mut LLVMValue>,
+    state: CodegenState<'static>,
+    _context: Pin<Box<inkwell::context::Context>>,
 }
 
 impl Codegen {
     pub fn new() -> anyhow::Result<Self> {
-        let inkwell_context = inkwell::context::Context::create();
-        let inkwell_context = Box::pin(inkwell_context);
+        let context = inkwell::context::Context::create();
+        let context = Box::pin(context);
+        let context_ref = unsafe {
+            &*(context.as_ref().get_ref() as *const inkwell::context::Context as *const ()
+                as *const inkwell::context::Context)
+        };
 
-        // SAFETY:
-        // well, the LLVM context works like an allocator arena,
-        // and module and builder are objects originated from such arena,
-        // so you need to fill their lifetimes with something.
-        // Well, we fill them with static as a placeholder,
-        // but in fact, it points to the pinned llvm context object.
-        // I believe this to be safe, because order of object destruction
-        // is guaranteed to be in order of declaration
-        // in rust, so the _possibly_¹ existing references in
-        // the module and builder don't actually exist by the time the context is
-        // dropped.
-        // This means that the unbounded lifetime created by this unsafe block
-        // never refers to dangling stuff
-        let inkwell_context_ref =
-            unsafe { &*(inkwell_context.as_ref().get_ref() as *const inkwell::context::Context) };
+        let state = CodegenState::new(context_ref).unwrap();
 
-        Ok(Self {
-            inkwell_context,
-            inkwell_module: inkwell_context_ref.create_module("repl"),
-            inkwell_builder: inkwell_context_ref.create_builder(),
-            types: None,
-            generated_count: 0,
-            declarations: DeclarationCounter::default(),
+        Ok(Codegen {
+            state,
+            _context: context,
         })
-    }
-
-    fn llvm_context(&self) -> &inkwell::context::Context {
-        self.inkwell_context.as_ref().get_ref()
-    }
-
-    fn llvm_module(&self) -> &inkwell::module::Module {
-        unsafe { std::mem::transmute(&self.inkwell_module) }
-    }
-
-    fn llvm_builder(&self) -> &inkwell::builder::Builder {
-        unsafe { std::mem::transmute(&self.inkwell_builder) }
-    }
-
-    fn llvm_context_raw(&mut self) -> *mut llvm::LLVMContext {
-        (&*self.inkwell_context).as_ctx_ref()
-    }
-
-    fn llvm_module_raw(&mut self) -> *mut llvm::LLVMModule {
-        (&self.inkwell_module).as_mut_ptr()
-    }
-
-    fn llvm_builder_raw(&mut self) -> *mut llvm::LLVMBuilder {
-        (&self.inkwell_builder).as_mut_ptr()
     }
 
     pub fn codegen_expression(
@@ -88,48 +43,76 @@ impl Codegen {
         expression: &syntax::Expression,
         type_check: TypeCheckOutput,
     ) -> anyhow::Result<ExpressionOutput> {
+        self.state.codegen_expression(expression, type_check)
+    }
+}
+
+pub struct CodegenState<'ctx> {
+    context: &'ctx inkwell::context::Context,
+    module: inkwell::module::Module<'ctx>,
+    builder: inkwell::builder::Builder<'ctx>,
+
+    types: Option<TypeCheckOutput>,
+    generated_count: u32,
+    declarations: DeclarationCounter<*mut LLVMValue>,
+}
+
+impl<'ctx> CodegenState<'ctx> {
+    pub fn new(context: &'ctx inkwell::context::Context) -> anyhow::Result<Self> {
+        Ok(Self {
+            context,
+            module: context.create_module("repl"),
+            builder: context.create_builder(),
+            types: None,
+            generated_count: 0,
+            declarations: DeclarationCounter::default(),
+        })
+    }
+
+    fn llvm_context_raw(&self) -> *mut llvm::LLVMContext {
+        self.context.as_ctx_ref()
+    }
+
+    fn llvm_builder_raw(&self) -> *mut llvm::LLVMBuilder {
+        self.builder.as_mut_ptr()
+    }
+
+    pub fn codegen_expression<'a>(
+        &'a mut self,
+        expression: &syntax::Expression,
+        type_check: TypeCheckOutput,
+    ) -> anyhow::Result<ExpressionOutput<'ctx>> {
         self.types = Some(type_check);
 
-        let function_type = {
-            let return_type = self.llvm_type_of(self.type_of(expression.id()));
-            unsafe { llvm::core::LLVMFunctionType(return_type, std::ptr::null_mut(), 0, 0) }
+        self.generated_count += 1;
+
+        let function_ = {
+            let function_type = {
+                let return_type = self
+                    .basic_llvm_type_of(self.type_of(expression.id()))
+                    .unwrap();
+                return_type.fn_type(&[], false)
+            };
+
+            let function_name = format!("repl_{}", self.generated_count);
+
+            self.module
+                .add_function(&function_name, function_type, None)
         };
 
-        let function = unsafe {
-            let function_name = format!("repl_{}\0", self.generated_count);
-            self.generated_count += 1;
-            llvm::core::LLVMAddFunction(
-                self.llvm_module_raw(),
-                function_name.as_ptr() as *const i8,
-                function_type,
-            )
-        };
+        let block = self.context.append_basic_block(function_, "fn_entry");
 
-        let block: *mut llvm::LLVMBasicBlock = unsafe {
-            llvm::core::LLVMAppendBasicBlockInContext(
-                self.llvm_context_raw(),
-                function,
-                b"entry\0".as_ptr() as *const i8,
-            )
-        };
-
-        unsafe {
-            llvm::core::LLVMPositionBuilderAtEnd(self.llvm_builder_raw(), block);
-        }
+        self.builder.position_at_end(block);
 
         let result_value = self.gen_expression(expression)?;
 
         unsafe {
             llvm::core::LLVMBuildRet(self.llvm_builder_raw(), result_value);
-            llvm::analysis::LLVMVerifyFunction(
-                function,
-                llvm::analysis::LLVMVerifierFailureAction::LLVMAbortProcessAction,
-            );
         }
+        assert!(function_.verify(false));
 
         Ok(ExpressionOutput {
-            generated_ir: function,
-            phamton: std::marker::PhantomData,
+            generated_ir: function_.as_global_value(),
         })
     }
 
@@ -137,14 +120,20 @@ impl Codegen {
         self.types.as_ref().unwrap().type_assignments[&id].clone()
     }
 
-    fn llvm_type_of(&mut self, ty: semantic::Type) -> *mut llvm::LLVMType {
-        match ty {
-            semantic::Type::Int => self.llvm_context().i64_type().as_type_ref(),
-            semantic::Type::Bool => self.llvm_context().bool_type().as_type_ref(),
+    fn basic_llvm_type_of(&mut self, ty: semantic::Type) -> Option<BasicTypeEnum<'ctx>> {
+        let result = match ty {
+            semantic::Type::Int => self.context.i64_type().as_basic_type_enum(),
+            semantic::Type::Bool => self.context.bool_type().as_basic_type_enum(),
             semantic::Type::String => todo!(),
-            semantic::Type::Unit => self.llvm_context().void_type().as_type_ref(),
-            semantic::Type::Function(_, _) => todo!(),
-        }
+            semantic::Type::Unit => return None,
+            semantic::Type::Function(_, _) => return None,
+        };
+
+        Some(result)
+    }
+
+    fn llvm_type_of(&mut self, ty: semantic::Type) -> *mut llvm::LLVMType {
+        self.basic_llvm_type_of(ty).unwrap().as_type_ref()
     }
 
     fn gen_expression(&mut self, expression: &syntax::Expression) -> IRResult {
@@ -166,7 +155,7 @@ impl Codegen {
         match literal.literal {
             syntax::Literal::Integer(i) => {
                 let result = self
-                    .llvm_context()
+                    .context
                     .i64_type()
                     .const_int(i as u64, true)
                     .as_value_ref();
@@ -176,7 +165,7 @@ impl Codegen {
 
             syntax::Literal::Bool(b) => {
                 let result = self
-                    .llvm_context()
+                    .context
                     .bool_type()
                     .const_int(b as u64, true)
                     .as_value_ref();
@@ -294,15 +283,12 @@ impl Codegen {
 }
 
 pub struct ExpressionOutput<'a> {
-    generated_ir: *mut llvm::LLVMValue,
-    phamton: std::marker::PhantomData<&'a ()>,
+    generated_ir: GlobalValue<'a>,
 }
 
 impl<'a> Display for ExpressionOutput<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let string = unsafe { inkwell::values::GlobalValue::new(self.generated_ir) }
-            .print_to_string()
-            .to_string();
+        let string = self.generated_ir.print_to_string().to_string();
 
         write!(f, "{}", string.to_string())?;
 
