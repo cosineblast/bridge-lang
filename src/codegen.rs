@@ -10,7 +10,11 @@ use llvm_sys as llvm;
 
 use crate::common::DeclarationCounter;
 
-use inkwell::{context::AsContextRef, types::AsTypeRef, values::{AnyValue, AsValueRef}};
+use inkwell::{
+    context::AsContextRef,
+    types::AsTypeRef,
+    values::{AnyValue, AsValueRef},
+};
 
 pub struct Codegen {
     inkwell_module: inkwell::module::Module<'static>,
@@ -57,6 +61,14 @@ impl Codegen {
 
     fn llvm_context(&self) -> &inkwell::context::Context {
         self.inkwell_context.as_ref().get_ref()
+    }
+
+    fn llvm_module(&self) -> &inkwell::module::Module {
+        unsafe { std::mem::transmute(&self.inkwell_module) }
+    }
+
+    fn llvm_builder(&self) -> &inkwell::builder::Builder {
+        unsafe { std::mem::transmute(&self.inkwell_builder) }
     }
 
     fn llvm_context_raw(&mut self) -> *mut llvm::LLVMContext {
@@ -117,13 +129,13 @@ impl Codegen {
 
         Ok(ExpressionOutput {
             generated_ir: function,
+            phamton: std::marker::PhantomData,
         })
     }
 
     fn type_of(&self, id: syntax::AstId) -> semantic::Type {
         self.types.as_ref().unwrap().type_assignments[&id].clone()
     }
-
 
     fn llvm_type_of(&mut self, ty: semantic::Type) -> *mut llvm::LLVMType {
         match ty {
@@ -281,15 +293,16 @@ impl Codegen {
     }
 }
 
-pub struct ExpressionOutput {
+pub struct ExpressionOutput<'a> {
     generated_ir: *mut llvm::LLVMValue,
+    phamton: std::marker::PhantomData<&'a ()>,
 }
 
-impl Display for ExpressionOutput {
+impl<'a> Display for ExpressionOutput<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let string = unsafe {
-            inkwell::values::GlobalValue::new(self.generated_ir)
-        }.print_to_string().to_string();
+        let string = unsafe { inkwell::values::GlobalValue::new(self.generated_ir) }
+            .print_to_string()
+            .to_string();
 
         write!(f, "{}", string.to_string())?;
 
