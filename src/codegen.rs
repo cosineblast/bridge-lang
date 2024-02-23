@@ -1,19 +1,22 @@
+// TODO: stop using globalvalue as a hack for *Value, and use &dyn Value instead
+
 use crate::semantic;
 use std::{fmt::Display, pin::Pin};
 
 use crate::{semantic::TypeCheckOutput, syntax};
-use llvm::{
-    core::{LLVMAddIncoming, LLVMBuildPhi},
-    LLVMValue,
-};
+use llvm::LLVMValue;
 use llvm_sys as llvm;
 
 use crate::common::DeclarationCounter;
 
 use inkwell::{
+    basic_block::BasicBlock,
     context::AsContextRef,
     types::{AsTypeRef, BasicType, BasicTypeEnum},
-    values::{AnyValue, AsValueRef, GlobalValue},
+    values::{
+        AnyValue, AsValueRef, BasicValue, BasicValueEnum, FunctionValue, GlobalValue, IntMathValue,
+        IntValue,
+    },
 };
 
 pub struct Codegen {
@@ -86,7 +89,7 @@ impl<'ctx> CodegenState<'ctx> {
 
         self.generated_count += 1;
 
-        let function_ = {
+        let function = {
             let function_type = {
                 let return_type = self
                     .basic_llvm_type_of(self.type_of(expression.id()))
@@ -100,7 +103,7 @@ impl<'ctx> CodegenState<'ctx> {
                 .add_function(&function_name, function_type, None)
         };
 
-        let block = self.context.append_basic_block(function_, "fn_entry");
+        let block = self.context.append_basic_block(function, "fn_entry");
 
         self.builder.position_at_end(block);
 
@@ -109,7 +112,7 @@ impl<'ctx> CodegenState<'ctx> {
         unsafe {
             llvm::core::LLVMBuildRet(self.llvm_builder_raw(), result_value);
         }
-        assert!(function_.verify(false));
+        assert!(function.verify(true));
 
         Ok(ExpressionOutput {
             generated_ir: function_.as_global_value(),
@@ -120,7 +123,7 @@ impl<'ctx> CodegenState<'ctx> {
         self.types.as_ref().unwrap().type_assignments[&id].clone()
     }
 
-    fn basic_llvm_type_of(&mut self, ty: semantic::Type) -> Option<BasicTypeEnum<'ctx>> {
+    fn basic_llvm_type_of(&self, ty: semantic::Type) -> Option<BasicTypeEnum<'ctx>> {
         let result = match ty {
             semantic::Type::Int => self.context.i64_type().as_basic_type_enum(),
             semantic::Type::Bool => self.context.bool_type().as_basic_type_enum(),
@@ -207,78 +210,66 @@ impl<'ctx> CodegenState<'ctx> {
     }
 
     fn gen_if(&mut self, expression: &syntax::IfExpression) -> IRResult {
-        unsafe {
-            let condition_value = self.gen_expression(&expression.condition)?;
+        let condition_value = self.gen_expression(&expression.condition)?;
 
-            let current_function = llvm::core::LLVMGetBasicBlockParent(
-                llvm::core::LLVMGetInsertBlock(self.llvm_builder_raw()),
-            );
+        let current_function = self
+            .builder
+            .get_insert_block()
+            .unwrap()
+            .get_parent()
+            .unwrap();
 
-            let then_block = llvm::core::LLVMAppendBasicBlockInContext(
-                self.llvm_context_raw(),
-                current_function,
-                b"then\0".as_ptr() as *const i8,
-            );
+        let then_block = self.context.append_basic_block(current_function, "then");
+        let else_block = self.context.append_basic_block(current_function, "else");
+        let end_block = self.context.append_basic_block(current_function, "end");
 
-            let else_block = llvm::core::LLVMAppendBasicBlockInContext(
-                self.llvm_context_raw(),
-                current_function,
-                b"else\0".as_ptr() as *const i8,
-            );
+        let cond = unsafe { IntValue::new(condition_value) };
 
-            let end_block = llvm::core::LLVMAppendBasicBlockInContext(
-                self.llvm_context_raw(),
-                current_function,
-                b"end\0".as_ptr() as *const i8,
-            );
+        self.builder
+            .build_conditional_branch(cond, then_block, else_block)?;
 
-            llvm::core::LLVMBuildCondBr(
-                self.llvm_builder_raw(),
-                condition_value,
-                then_block,
-                else_block,
-            );
+        // build then branch
+        self.builder.position_at_end(then_block);
 
-            // build then branch
-            llvm::core::LLVMPositionBuilderAtEnd(self.llvm_builder_raw(), then_block);
-            let then_value = self.gen_block(&expression.then_branch)?;
-            llvm::core::LLVMBuildBr(self.llvm_builder_raw(), end_block);
+        let then_value = self.gen_block(&expression.then_branch)?;
+        let then_value = unsafe { GlobalValue::new(then_value) };
+        let then_value = then_value.as_basic_value_enum();
 
-            // we reset the then_block because phi thingies
-            // TODO: study this
-            let then_block = llvm::core::LLVMGetInsertBlock(self.llvm_builder_raw());
+        self.builder.build_unconditional_branch(end_block)?;
 
-            // build else branch
+        // we reset the then_block because phi thingies
+        // TODO: study this
+        let then_block = self.builder.get_insert_block().unwrap();
 
-            llvm::core::LLVMPositionBuilderAtEnd(self.llvm_builder_raw(), else_block);
+        // build else branch
+        self.builder.position_at_end(else_block);
 
-            let else_value = self.gen_block(
-                expression
-                    .else_branch
-                    .as_ref()
-                    .expect("else not implemented"),
-            )?;
-            llvm::core::LLVMBuildBr(self.llvm_builder_raw(), end_block);
+        let else_value = self.gen_block(
+            expression
+                .else_branch
+                .as_ref()
+                .expect("else not implemented"),
+        )?;
 
-            let else_block = llvm::core::LLVMGetInsertBlock(self.llvm_builder_raw());
+        let else_value = unsafe { GlobalValue::new(else_value) };
+        let else_value = else_value.as_basic_value_enum();
 
-            // end block
+        self.builder.build_unconditional_branch(end_block)?;
 
-            llvm::core::LLVMPositionBuilderAtEnd(self.llvm_builder_raw(), end_block);
+        let else_block = self.builder.get_insert_block().unwrap();
 
-            let phi = LLVMBuildPhi(
-                self.llvm_builder_raw(),
-                self.llvm_type_of(self.type_of(expression.id)),
-                b"bruh\0".as_ptr() as *const i8,
-            );
+        // end block
+        self.builder.position_at_end(end_block);
 
-            let mut values = [then_value, else_value];
-            let mut blocks = [then_block, else_block];
+        let phi = self.builder.build_phi(
+            self.basic_llvm_type_of(self.type_of(expression.id))
+                .unwrap(),
+            "bruh",
+        )?;
 
-            LLVMAddIncoming(phi, values.as_mut_ptr(), blocks.as_mut_ptr(), 2);
+        phi.add_incoming(&[(&then_value, then_block), (&else_value, else_block)]);
 
-            Ok(phi)
-        }
+        Ok(phi.as_value_ref())
     }
 }
 
