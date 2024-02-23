@@ -8,11 +8,9 @@ use llvm_sys as llvm;
 use crate::common::DeclarationCounter;
 
 use inkwell::{
-    basic_block::BasicBlock,
-    context::AsContextRef,
-    types::{AsTypeRef, BasicType, BasicTypeEnum},
+    types::{BasicType, BasicTypeEnum},
     values::{
-        AnyValue, AsValueRef, BasicValue, BasicValueEnum, FunctionValue, GlobalValue, IntMathValue,
+        AnyValue, AsValueRef, BasicValueEnum, FunctionValue,
         IntValue,
     },
 };
@@ -70,14 +68,6 @@ impl<'ctx> CodegenState<'ctx> {
         })
     }
 
-    fn llvm_context_raw(&self) -> *mut llvm::LLVMContext {
-        self.context.as_ctx_ref()
-    }
-
-    fn llvm_builder_raw(&self) -> *mut llvm::LLVMBuilder {
-        self.builder.as_mut_ptr()
-    }
-
     pub fn codegen_expression<'a>(
         &'a mut self,
         expression: &syntax::Expression,
@@ -106,10 +96,10 @@ impl<'ctx> CodegenState<'ctx> {
         self.builder.position_at_end(block);
 
         let result_value = self.gen_expression(expression)?;
+        let result_value = unsafe { BasicValueEnum::new(result_value) };
 
-        unsafe {
-            llvm::core::LLVMBuildRet(self.llvm_builder_raw(), result_value);
-        }
+        self.builder.build_return(Some(&result_value))?;
+
         assert!(function.verify(true));
 
         Ok(ExpressionOutput {
@@ -131,10 +121,6 @@ impl<'ctx> CodegenState<'ctx> {
         };
 
         Some(result)
-    }
-
-    fn llvm_type_of(&mut self, ty: semantic::Type) -> *mut llvm::LLVMType {
-        self.basic_llvm_type_of(ty).unwrap().as_type_ref()
     }
 
     fn gen_expression(&mut self, expression: &syntax::Expression) -> IRResult {
@@ -277,7 +263,7 @@ impl<'a> Display for ExpressionOutput<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = self.generated_ir.print_to_string().to_string();
 
-        write!(f, "{}", string.to_string())?;
+        write!(f, "{}", string)?;
 
         Ok(())
     }
