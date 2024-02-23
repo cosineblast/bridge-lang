@@ -1,5 +1,3 @@
-// TODO: stop using globalvalue as a hack for *Value, and use &dyn Value instead
-
 use crate::semantic;
 use std::{fmt::Display, pin::Pin};
 
@@ -115,7 +113,7 @@ impl<'ctx> CodegenState<'ctx> {
         assert!(function.verify(true));
 
         Ok(ExpressionOutput {
-            generated_ir: function_.as_global_value(),
+            generated_ir: function,
         })
     }
 
@@ -232,8 +230,7 @@ impl<'ctx> CodegenState<'ctx> {
         self.builder.position_at_end(then_block);
 
         let then_value = self.gen_block(&expression.then_branch)?;
-        let then_value = unsafe { GlobalValue::new(then_value) };
-        let then_value = then_value.as_basic_value_enum();
+        let then_value = unsafe { inkwell::values::BasicValueEnum::new(then_value) };
 
         self.builder.build_unconditional_branch(end_block)?;
 
@@ -251,8 +248,7 @@ impl<'ctx> CodegenState<'ctx> {
                 .expect("else not implemented"),
         )?;
 
-        let else_value = unsafe { GlobalValue::new(else_value) };
-        let else_value = else_value.as_basic_value_enum();
+        let else_value = unsafe { BasicValueEnum::new(else_value) };
 
         self.builder.build_unconditional_branch(end_block)?;
 
@@ -274,7 +270,7 @@ impl<'ctx> CodegenState<'ctx> {
 }
 
 pub struct ExpressionOutput<'a> {
-    generated_ir: GlobalValue<'a>,
+    generated_ir: FunctionValue<'a>,
 }
 
 impl<'a> Display for ExpressionOutput<'a> {
